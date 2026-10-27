@@ -49,6 +49,27 @@ const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {c
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
 let allowCloudLogin=false,loginSubmitting=false;let resourcesOpen=false,resourceData=null,resourceSelection=new Set();
+const RESOURCE_RECENT_KEY='raiders-recent-resources-v1';
+let recentResourceIds=[];
+try{
+ const stored=JSON.parse(localStorage.getItem(RESOURCE_RECENT_KEY)||'[]');
+ if(Array.isArray(stored))recentResourceIds=[...new Set(stored.filter(x=>typeof x==='string'))].slice(0,8);
+}catch(error){console.warn('История ресурсов недоступна:',error)}
+function rememberRecentResource(id){
+ recentResourceIds=[id,...recentResourceIds.filter(x=>x!==id)].slice(0,8);
+ try{localStorage.setItem(RESOURCE_RECENT_KEY,JSON.stringify(recentResourceIds))}
+ catch(error){console.warn('История ресурсов не сохранена:',error)}
+}
+function renderRecentResources(items){
+ const recent=recentResourceIds.filter(id=>items[id]);
+ $('resourceHistory').hidden=recent.length===0;
+ $('resourceHistory').innerHTML=recent.length?
+  '<div class="resource-history-title">НЕДАВНО ИСКАЛИ</div><div class="resource-history-items">'+
+  recent.map(id=>{
+   const item=items[id];
+   return `<button type="button" data-recent-resource="${esc(id)}" title="Добавить ${esc(item.name)}" aria-label="Добавить ${esc(item.name)}">${validImage(item.image)?`<img src="${esc(item.image)}" alt="" loading="lazy">`:'<span aria-hidden="true">⬡</span>'}<span>${esc(item.nameRu||item.name)}</span></button>`;
+  }).join('')+'</div>':'';
+}
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
@@ -104,15 +125,30 @@ async function switchArea(next){
  else if(mode==='demo')setStatus('Демо · сохранено только в браузере');
  return true;
 }
-$('areaStash').addEventListener('click',()=>switchArea('stash'));
+$('areaStash').addEventListener('click',()=>{leaveResources();switchArea('stash')});
 $('areaRaid').addEventListener('click',()=>{leaveResources();switchArea('raid')});
-$('areaStash').addEventListener('click',()=>leaveResources());
 $('areaResources').addEventListener('click',()=>openResources());
-function leaveResources(){resourcesOpen=false;$('resourcesPanel').hidden=true;$('mainDashboard').hidden=false;$('areaResources').classList.remove('active');$('areaResources').setAttribute('aria-selected','false')}
+function updateActiveSection(){
+ const current=resourcesOpen?'areaResources':area==='stash'?'areaStash':'areaRaid';
+ for(const id of ['areaStash','areaResources','areaRaid']){
+  const active=id===current;
+  $(id).classList.toggle('active',active);
+  $(id).setAttribute('aria-selected',String(active));
+  if(active)$(id).setAttribute('aria-current','page');
+  else $(id).removeAttribute('aria-current');
+ }
+}
+function leaveResources(){
+ resourcesOpen=false;
+ $('resourcesPanel').hidden=true;
+ $('mainDashboard').hidden=false;
+ updateActiveSection();
+}
 async function openResources(){
- resourcesOpen=true;$('mainDashboard').hidden=true;$('resourcesPanel').hidden=false;
- for(const id of ['areaStash','areaRaid'])$(''+id).classList.remove('active');
- $('areaResources').classList.add('active');$('areaResources').setAttribute('aria-selected','true');
+ resourcesOpen=true;
+ $('mainDashboard').hidden=true;
+ $('resourcesPanel').hidden=false;
+ updateActiveSection();
  if(!resourceData){$('resourceResults').textContent='Загрузка рецептов…';try{const r=await fetch('./catalog/recipes.json',{cache:'no-cache'});if(!r.ok)throw Error('Данные рецептов ещё не опубликованы');resourceData=await r.json();}catch(e){$('resourceResults').textContent='Не удалось загрузить рецепты: '+e.message;return}}
  renderResources();
 }
@@ -120,6 +156,7 @@ function renderResources(){
  if(!resourceData)return;
  const query=$('resourceSearch').value.toLocaleLowerCase().trim();
  const items=resourceData.items||{},recipes=resourceData.recipes||[];
+ renderRecentResources(items);
  const resourceIds=query?[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&!resourceSelection.has(id)&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(query)):[];
  $('resourceList').innerHTML=resourceIds.slice(0,120).map(id=>{
   const item=items[id],selected=resourceSelection.has(id);
@@ -150,12 +187,24 @@ function renderResources(){
 $('resourceSearch').addEventListener('input',renderResources);
 $('resourceList').addEventListener('click',e=>{
  const btn=e.target.closest('[data-resource]');if(!btn)return;
- const id=btn.dataset.resource;if(!resourceSelection.has(id))resourceSelection.add(id);
+ const id=btn.dataset.resource;
+ if(!resourceSelection.has(id))resourceSelection.add(id);
+ rememberRecentResource(id);
  $('resourceSearch').value='';
  renderResources();
  $('resourceSearch').focus();
 });
 $('resourceChosen').addEventListener('click',e=>{const b=e.target.closest('[data-remove-resource]');if(!b)return;resourceSelection.delete(b.dataset.removeResource);renderResources()});
+$('resourceHistory').addEventListener('click',e=>{
+ const button=e.target.closest('[data-recent-resource]');if(!button)return;
+ const id=button.dataset.recentResource;
+ if(!resourceData?.items?.[id])return;
+ resourceSelection.add(id);
+ rememberRecentResource(id);
+ $('resourceSearch').value='';
+ renderResources();
+ $('resourceSearch').focus();
+});
 
 function setStatus(s){$('saveStatus').textContent=s}
 function message(err){const code=err?.code||''; const messages={
@@ -573,8 +622,7 @@ function renderAreaUi(){
  const plansDestination=stash?$('plansTopAnchor'):$('plansBottomAnchor');
  if(plansPanel.parentElement!==plansDestination)plansDestination.appendChild(plansPanel);
  plansPanel.classList.toggle('plans-at-top',stash);
- $('areaStash').classList.toggle('active',stash);$('areaRaid').classList.toggle('active',!stash);
- $('areaStash').setAttribute('aria-selected',String(stash));$('areaRaid').setAttribute('aria-selected',String(!stash));
+ updateActiveSection();
  $('workspaceTitle').textContent=stash?'МОЙ СКЛАД · STASH':'LOADOUTS';
  $('areaDescription').textContent=stash?'Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.':'Отдельный план снаряжения и предметов для выхода на поверхность. Не меняет склад.';
  $('plansTitle').textContent=stash?'ПЛАНЫ СКЛАДА':'РЕЙДОВЫЕ СБОРКИ';
@@ -607,7 +655,7 @@ function renderCatalog(){
  else if(sort==='name')arr.sort((a,b)=>a.name.localeCompare(b.name,'en'));
  else if(sort==='value')arr.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0)||a.name.localeCompare(b.name));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" title="Открыть веб-страницу MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" title="Открыть веб-страницу MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){
@@ -700,8 +748,17 @@ $('catalogSort').addEventListener('change',()=>{
   try{localStorage.setItem('raiders-catalog-sort-v1',mode)}catch(error){console.warn('Catalog sorting preference not saved:',error)}
   shown=80;renderCatalog();
 });
-$('catalogKindIcons').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(!b)return;$('catalogKind').value=b.dataset.kind;shown=80;renderCatalog()});
-$('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
+$('catalogKindIcons').addEventListener('click',e=>{
+ const button=e.target.closest('[data-kind]');if(!button)return;
+ $('catalogKind').value=button.dataset.kind;
+ $('category').value='';
+ shown=80;renderCatalog();
+});
+$('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{
+ // Detailed category and game category icons are mutually exclusive filters.
+ $('catalogKind').value='all';
+ shown=80;renderCatalog();
+});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
 $('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
