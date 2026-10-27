@@ -716,7 +716,11 @@ function startStashDrop(from){
  if(area!=='stash'||!state.slots[from])return;
  stashDragFrom=from;catalogDropZone.classList.add('can-remove');catalogDropHint.hidden=false;
 }
+// Dragend is not reliable after renderGrid replaces the dragged DOM node.
 $('inventory').addEventListener('dragend',clearStashDropState);
+document.addEventListener('dragend',clearStashDropState,true);
+document.addEventListener('drop',clearStashDropState);
+window.addEventListener('blur',clearStashDropState);
 catalogDropZone.addEventListener('dragenter',e=>{
  if(area==='stash'&&stashDragFrom!==null){e.preventDefault();catalogDropZone.classList.add('is-drop-ready')}
 });
@@ -740,7 +744,30 @@ catalogDropZone.addEventListener('drop',e=>{
 });
 $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move';startStashDrop(Number(b.dataset.slot))}});
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
-$('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
+$('inventory').addEventListener('drop',e=>{
+ const b=e.target.closest('[data-slot]');
+ if(!b){clearStashDropState();return}
+ e.preventDefault();
+ try{
+  const to=Number(b.dataset.slot);
+  const data=JSON.parse(e.dataTransfer.getData('text/plain'));
+  if(data.kind==='catalog')addItem(data.id,to);
+  else if(data.kind==='ref'&&area==='raid')moveRef(data.from,'bag:'+to);
+  else if(data.kind==='slot'){
+   const from=Number(data.from);
+   if(from>=0&&from<state.capacity&&from!==to){
+    [state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];
+    state.selectedSlot=to;
+    persist();
+    renderGrid();
+   }
+  }
+ }catch(error){toast('Не удалось перенести предмет')}
+ finally{
+  // Always dismiss the remove-from-STASH prompt, including same-slot drops.
+  clearStashDropState();
+ }
+});
 $('catalogKind').addEventListener('change',renderCatalog);
 $('catalogSort').addEventListener('change',()=>{
   const mode=$('catalogSort').value;
