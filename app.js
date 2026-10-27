@@ -362,6 +362,10 @@ $('raidLayout').addEventListener('drop',e=>{const b=e.target.closest('[data-ref]
 function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>'}
 function renderAreaUi(){
  const stash=area==='stash';
+ const plansPanel=$('plansPanel');
+ const plansDestination=stash?$('plansTopAnchor'):$('plansBottomAnchor');
+ if(plansPanel.parentElement!==plansDestination)plansDestination.appendChild(plansPanel);
+ plansPanel.classList.toggle('plans-at-top',stash);
  $('areaStash').classList.toggle('active',stash);$('areaRaid').classList.toggle('active',!stash);
  $('areaStash').setAttribute('aria-selected',String(stash));$('areaRaid').setAttribute('aria-selected',String(!stash));
  $('workspaceTitle').textContent=stash?'МОЙ СКЛАД · STASH':'LOADOUTS';
@@ -380,6 +384,12 @@ function renderAreaUi(){
  $('stashNote').hidden=!stash;
  $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';
 }
+// Floating return-to-top button, shared by STASH and LOADOUTS.
+const backToTop=$('backToTop');
+function updateBackToTop(){backToTop.hidden=window.scrollY<280}
+window.addEventListener('scroll',updateBackToTop,{passive:true});
+backToTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+updateBackToTop();
 function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
  const arr=catalog.filter(x=>(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
