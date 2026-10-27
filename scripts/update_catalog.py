@@ -134,33 +134,23 @@ def fetch_ardb():
 
 
 def get_verified_russian_names():
-    """ARC Tracker public item translations, downloaded as one archive."""
-    import io
-    import zipfile
-    url = "https://codeload.github.com/RaidTheory/arcraiders-data/zip/refs/heads/main"
-    request = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(request, timeout=55) as response:
-        archive_bytes = response.read(32 * 1024 * 1024 + 1)
-    if len(archive_bytes) > 32 * 1024 * 1024:
-        raise RuntimeError("ARC Tracker translation archive is oversized")
+    """Read verified translations from sparse-checkout of ARC Tracker item files."""
+    directory = ROOT / "external" / "arcraiders-data" / "items"
+    if not directory.is_dir():
+        raise RuntimeError("ARC Tracker translation folder is unavailable")
     names = {}
-    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
-        for entry in archive.namelist():
-            if "/items/" not in entry or not entry.endswith(".json"):
-                continue
-            if entry.count("/") != 2:
-                continue
-            try:
-                data = json.loads(archive.read(entry))
-                label = data.get("name") or {}
-                en = label.get("en", "") if isinstance(label, dict) else ""
-                ru = label.get("ru", "") if isinstance(label, dict) else ""
-                if en and ru:
-                    names[en.strip().casefold()] = ru.strip()
-            except Exception:
-                continue
+    for path in directory.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            label = data.get("name") or {}
+            en = label.get("en", "") if isinstance(label, dict) else ""
+            ru = label.get("ru", "") if isinstance(label, dict) else ""
+            if en and ru:
+                names[en.strip().casefold()] = ru.strip()
+        except Exception:
+            continue
     if not names:
-        raise RuntimeError("No validated Russian translations downloaded")
+        raise RuntimeError("No validated Russian names in ARC Tracker")
     return names
 
 
