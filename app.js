@@ -634,7 +634,7 @@ function saveExistingPlanChanges(){
  builds[i]={...builds[i],...serializeState()};
  persist();renderSaves();toast('Сохранены изменения: '+name);
 }
-function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
+function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-rename="${i}" class="small renameaction" title="Переименовать план" aria-label="Переименовать ${esc(b.name)}">✎</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
 function renderAreaUi(){
  const stash=area==='stash';
  const plansPanel=$('plansPanel');
@@ -657,7 +657,7 @@ function renderAreaUi(){
  $('presets').innerHTML=choices.map(n=>`<button class="small" data-capacity="${n}">${n}</button>`).join('');
  $('stashNote').hidden=!stash;
  $('exportPdf').hidden=!stash;
-  $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';if(catalog.length)categories();renderCatalog();
+  if(catalog.length)categories();renderCatalog();
 }
 // Floating return-to-top button, shared by STASH and LOADOUTS.
 const backToTop=$('backToTop');
@@ -846,23 +846,20 @@ $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.k
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
 $('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
-$('saveAs').addEventListener('click',()=>{
- const current=activePlanNames[area]||'Мой склад';
- const name=window.prompt('Название новой копии плана:',current+' — копия');
- if(name===null)return;
- const trimmed=name.trim();
- if(!trimmed)return toast('Укажите название нового плана');
- if(trimmed.length>60)return toast('Название не может быть длиннее 60 символов');
- if(builds.some(b=>b.name===trimmed))return toast('План с таким названием уже существует. Выбери другое.');
- builds.unshift({name:trimmed,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});
- builds=builds.slice(0,30);
- activePlanNames[area]=trimmed;
- persist();renderSaves();toast('Создана копия плана: '+trimmed);
-});
 $('saveChanges').addEventListener('click',saveExistingPlanChanges);
 $('savedList').addEventListener('click',async e=>{
- const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]');
- if(share){await publishBuild(Number(share.dataset.share))}
+ const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]'),rename=e.target.closest('[data-rename]');
+ if(rename){
+  const idx=Number(rename.dataset.rename),plan=builds[idx];if(!plan)return;
+  const answer=window.prompt('Новое название плана:',plan.name);if(answer===null)return;
+  const next=answer.trim();
+  if(!next||next.length>60)return toast('Название должно содержать от 1 до 60 символов');
+  if(next===plan.name)return;
+  if(builds.some((b,i)=>i!==idx&&b.name===next))return toast('План с таким названием уже существует');
+  const prev=plan.name;plan.name=next;
+  if(activePlanNames[area]===prev)activePlanNames[area]=next;
+  persist();renderSaves();toast('План переименован: '+next);
+ }else if(share){await publishBuild(Number(share.dataset.share))}
  else if(revoke){const b=builds[Number(revoke.dataset.revoke)];if(b&&confirm('Отозвать публичную ссылку на «'+b.name+'»? Друг больше не сможет открыть её.'))await revokeBuild(b)}
  else if(del){const i=Number(del.dataset.delete),b=builds[i];if(!b||!confirm('Удалить сборку «'+b.name+'»?'))return;
   if(b.shareId&&!(await revokeBuild(b,true)))return;
@@ -903,8 +900,7 @@ function exportStashPDF(){
 }
 $('exportPdf').addEventListener('click',exportStashPDF);
 
-$('exportBtn').addEventListener('click',()=>downloadJSON({version:1,area,capacity:state.capacity,columns:state.columns,slots:state.slots},area==='stash'?'arc-stash.json':'arc-raid.json'));
-$('exportAllBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
+$('exportBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
 $('importBtn').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.area&&x.area!==area){toast('Этот JSON относится к разделу «'+(x.area==='stash'?'Склад':'Рейд')+'». Переключитесь в него и повторите импорт.');return}if(x.version===2&&x.state&&Array.isArray(x.builds)){if(!confirm('Заменить все сохранённые сборки из JSON?'))return;builds=normBuilds(x.builds);applySaved(x.state);toast('Все сборки импортированы')}else{applySaved(x);toast('Инвентарь импортирован')}}catch(err){toast('Ошибка импорта: '+err.message)}finally{e.target.value=''}});
 
 // --- Sharing only explicit snapshots. Every private workspace stays behind owner rules. ---
