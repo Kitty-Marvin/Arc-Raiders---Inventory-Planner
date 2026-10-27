@@ -402,13 +402,30 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 .resource-chip-name{font-size:12px}
 .catalog-item-wrap>.item-meta-link{font-family:Arial,'Segoe UI',sans-serif!important;font-style:normal!important;font-weight:800!important;transform:none!important;width:25px!important;height:25px!important;aspect-ratio:1!important;display:grid!important;place-items:center!important}
 @media(max-width:520px){.catalog-kind-icons button{max-width:29px;padding:2px!important}}
+
+/* v7.4 consistent selected sections, category border and resource history */
+.areatabs .areatab{position:relative;border:2px solid #415464;transition:background .15s,border-color .15s}
+.areatabs .areatab.active{background:#e8a74e!important;color:#0a1720!important;border-color:#ffd593!important;box-shadow:inset 0 -4px 0 #bc782b,0 0 0 1px #e9ba75}
+.areatabs .areatab.active:after{content:"";position:absolute;left:8%;right:8%;bottom:-5px;height:3px;background:#e8a74e;border-radius:3px}
+.areatabs .areatab:not(.active){background:#18222c!important;color:#d4e0e7!important}
+.catalog-kind-icons button{border:1px solid #526574!important;box-sizing:border-box!important}
+.catalog-kind-icons button.active{border:2px solid #eab15d!important;background:#53402d!important}
+.catalog-kind-icons button:last-child{border:1px solid #526574!important}
+.catalog-kind-icons button:last-child.active{border:2px solid #eab15d!important}
+.resource-history{margin:9px 0 13px}
+.resource-history[hidden]{display:none!important}
+.resource-history-title{font-size:10px;color:#aebcc6;font-weight:800;letter-spacing:.75px;margin:0 0 7px}
+.resource-history-items{display:flex;gap:7px;flex-wrap:wrap}
+.resource-history-items button{display:flex;align-items:center;gap:7px;padding:5px 9px;font-size:11px;border:1px solid #495c69;border-radius:6px;background:#1d2d37}
+.resource-history-items button:hover{border-color:#d9a252;background:#34404a}
+.resource-history-items img{width:26px;height:26px;object-fit:contain}
 </style>
 </head>
 <body>
 <div class="shell">
 <header class="top"><div class="brand"><div class="brandmark radar-mark" aria-label="ARC Raiders colored streaks"><svg viewBox="0 0 64 64" role="img" aria-label="Четыре цветные линии"><rect width="64" height="64" fill="#05050d"/><path d="M-21 -26Q16 8 27 89" stroke="#7cece7" stroke-width="12" fill="none"/><path d="M-6 -30Q29 10 44 90" stroke="#28ed84" stroke-width="12" fill="none"/><path d="M10 -31Q45 9 60 89" stroke="#ffcf05" stroke-width="12" fill="none"/><path d="M25 -32Q61 10 77 90" stroke="#f01a29" stroke-width="12" fill="none"/></svg></div><div><div class="over">KITTY_MARVINS · RAIDER'S UTILITY / V 7.2</div><h1>STASH & LOADOUT PLANNER</h1></div></div><div class="topmeta"><strong id="saveStatus">Проверка облака...</strong><div class="topbuttons"><button id="loginOpen" class="small subtle" hidden>Войти / Регистрация</button><button class="small" id="syncRefresh" title="Получить свежие данные из облака">↻ Обновить</button> <button class="small subtle" id="logoutBtn" hidden>Выйти</button></div></div></header>
 <div class="areatabs" role="tablist" aria-label="Раздел планировщика"><button id="areaStash" class="areatab active" role="tab" aria-selected="true">STASH</button><button id="areaResources" class="areatab" role="tab" aria-selected="false">RESOURCES</button><button id="areaRaid" class="areatab" role="tab" aria-selected="false"><span>LOADOUTS</span><span class="wip-badge" title="Still being built">🚧 UNDER CONSTRUCTION</span></button></div>
-<section id="resourcesPanel" class="resources-panel panel" hidden><div class="panelhead"><div><div class="eyebrow">CRAFT TRACKER</div><div class="paneltitle">RESOURCES · ПОИСК РЕЦЕПТОВ</div></div></div><div class="content"><p class="hint">Выбери один или несколько ресурсов. Сначала рецепты, охватывающие больше выбранных ресурсов, затем с минимальным числом лишних ингредиентов. Отслеживание в самой игре включается вручную.</p><input id="resourceSearch" type="search" placeholder="Поиск: Plastic Parts / Пластик..." autocomplete="off"><div id="resourceList" class="resource-list"></div><div id="resourceChosen" class="resource-chosen"></div><div id="resourceResults" class="resource-results"></div></div></section><div class="dashboard" id="mainDashboard">
+<section id="resourcesPanel" class="resources-panel panel" hidden><div class="panelhead"><div><div class="eyebrow">CRAFT TRACKER</div><div class="paneltitle">RESOURCES · ПОИСК РЕЦЕПТОВ</div></div></div><div class="content"><p class="hint">Выбери один или несколько ресурсов. Сначала рецепты, охватывающие больше выбранных ресурсов, затем с минимальным числом лишних ингредиентов. Отслеживание в самой игре включается вручную.</p><input id="resourceSearch" type="search" placeholder="Поиск: Plastic Parts / Пластик..." autocomplete="off"><div id="resourceHistory" class="resource-history" hidden></div><div id="resourceList" class="resource-list"></div><div id="resourceChosen" class="resource-chosen"></div><div id="resourceResults" class="resource-results"></div></div></section><div class="dashboard" id="mainDashboard">
 <section class="panel"><div class="panelhead"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><div class="paneltitle" id="workspaceTitle">МОЙ СКЛАД · STASH</div></div><button class="small subtle" id="clearBtn">Очистить ячейки</button></div><div class="content">
 <p class="intro" id="areaDescription">Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.</p><div class="controls"><div class="control"><label for="capacity">Количество ячеек</label><input id="capacity" type="number" min="1" max="600" value="64"></div><div class="control"><label for="columns">Столбцов</label><select id="columns"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>12</option></select></div><div class="control"><label>Быстрый размер</label><div class="presets" id="presets"></div></div></div>
 <p id="stashNote" class="hint">Обычный склад начинается с 64 ячеек. Быстрые значения отражают расширения по 24 слота до 328. Дополнительные бонусы можно учесть вручную.</p><div class="line"></div><div class="summary"><span class="countchip">Занято <span class="fraction"><b id="usedCount">0</b>/<b id="totalCount">64</b></span></span><span class="countchip">Свободно <b id="freeCount">64</b></span><span class="countchip">Предметов <b id="itemCount">0</b></span></div>
@@ -479,5 +496,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=7.3-session-resources"></script>
+<script type="module" src="./app.js?v=7.4-recent-tabs"></script>
 </body></html>
