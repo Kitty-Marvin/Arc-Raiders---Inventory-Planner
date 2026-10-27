@@ -157,7 +157,7 @@
 </head>
 <body>
 <div class="shell">
-<header class="top"><div class="brand"><div class="brandmark">A</div><div><div class="over">RAIDER'S FIELD UTILITY / V 6.1 — STASH + LOADOUTS</div><h1>STASH & LOADOUT PLANNER</h1></div></div><div class="topmeta">ARC RAIDERS · НЕОФИЦИАЛЬНЫЙ ИНСТРУМЕНТ<br><strong id="saveStatus">Проверка облака...</strong><div class="topbuttons"><button class="small" id="syncRefresh" title="Получить свежие данные из облака">↻ Обновить</button> <button class="small subtle" id="logoutBtn" hidden>Выйти</button></div></div></header>
+<header class="top"><div class="brand"><div class="brandmark">A</div><div><div class="over">RAIDER'S FIELD UTILITY / V 6.5.1 — STASH + LOADOUTS</div><h1>STASH & LOADOUT PLANNER</h1></div></div><div class="topmeta">ARC RAIDERS · НЕОФИЦИАЛЬНЫЙ ИНСТРУМЕНТ<br><strong id="saveStatus">Проверка облака...</strong><div class="topbuttons"><button class="small" id="syncRefresh" title="Получить свежие данные из облака">↻ Обновить</button> <button class="small subtle" id="logoutBtn" hidden>Выйти</button></div></div></header>
 <div class="areatabs" role="tablist" aria-label="Раздел планировщика"><button id="areaStash" class="areatab active" role="tab" aria-selected="true">STASH</button><button id="areaRaid" class="areatab" role="tab" aria-selected="false"><span>LOADOUTS</span><span class="wip-badge" title="Still being built">🚧 UNDER CONSTRUCTION</span></button></div>
 <div class="dashboard">
 <section class="panel"><div class="panelhead"><div><div class="eyebrow">01 / КОНФИГУРАЦИЯ</div><div class="paneltitle" id="workspaceTitle">МОЙ СКЛАД · STASH</div></div><button class="small subtle" id="clearBtn">Очистить ячейки</button></div><div class="content">
@@ -208,5 +208,15 @@
 <div class="overlay" id="loginOverlay"><div class="modal loginbox" role="dialog" aria-modal="true" aria-labelledby="loginTitle"><div class="eyebrow">ARC RAIDERS · ОБЩИЙ ПЛАНИРОВЩИК</div><h2 id="loginTitle">Войти в планировщик</h2><p id="authSubtitle" class="muted">Собственный инвентарь на каждом аккаунте. Друзья могут зарегистрироваться самостоятельно.</p><form id="loginForm"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username" required placeholder="you@example.com" style="width:100%;margin:8px 0 10px"><label for="loginPassword">Пароль</label><input id="loginPassword" type="password" autocomplete="current-password" required minlength="1" placeholder="Пароль доступа" style="width:100%;margin:8px 0 13px"><button id="authSubmit" class="primary" type="submit" style="width:100%">Войти и синхронизировать</button></form><button id="signupToggle" class="subtle" style="width:100%;margin-top:10px">Создать личный аккаунт</button><div class="line" style="margin:13px 0"></div><button id="demoMode" class="subtle" style="width:100%">Открыть локальное демо без Firebase</button><p class="hint" id="loginMessage"></p></div></div>
 <div class="overlay sharepreview" id="sharedOverlay" hidden><div class="modal sharemodal" role="dialog" aria-modal="true" aria-labelledby="sharedTitle"><div class="eyebrow">ARC RAIDERS / ПУБЛИЧНЫЙ ПЛАН</div><h2 id="sharedTitle">Загрузка сборки…</h2><p class="muted" id="sharedInfo">Получаем сохранённый план.</p><div id="sharedGrid" class="sharedgrid"></div><p class="hint" id="sharedHint">Это отдельная опубликованная копия плана. Остальные данные автора недоступны.</p><div class="modal-actions"><button class="primary" id="importShared" hidden>Скопировать в мой планировщик</button><button id="closeShared">Закрыть просмотр</button></div></div></div><div id="toast" class="toast" hidden></div>
 <button id="backToTop" class="back-to-top" type="button" aria-label="Вернуться в начало страницы" title="Наверх" hidden><span aria-hidden="true">↑</span> Наверх</button>
-<script type="module" src="./app.js"></script>
+<script>
+// Tell the visitor when the app module is blocked or a stale cached script fails.
+setTimeout(() => {
+ const status=document.getElementById('saveStatus');
+ if(status && status.textContent.trim()==='Проверка облака...'){
+   const message=document.getElementById('loginMessage');
+   if(message)message.textContent='Не удалось запустить приложение. Обновите страницу сочетанием Ctrl + Shift + R. Если ошибка останется, откройте консоль браузера (F12).';
+ }
+},7000);
+</script>
+<script type="module" src="./app.js?v=6.5.1-cache-fix"></script>
 </body></html>
