@@ -165,6 +165,55 @@ def enhance(items, translations):
     return items
 
 
+
+def build_crafting_index():
+    """Crafting recipes keyed by real ARC Tracker item IDs; never infer recipes."""
+    directory = ROOT / "external" / "arcraiders-data" / "items"
+    recipes, resource_map = [], {}
+    if not directory.is_dir():
+        raise RuntimeError("ARC Tracker item directory is unavailable")
+    items = {}
+    for path in directory.glob("*.json"):
+        try:
+            x = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(x, dict) and isinstance(x.get("id"), str):
+                items[x["id"]] = x
+        except (ValueError, OSError):
+            continue
+    for rid, item in items.items():
+        label = item.get("name") or {}
+        if isinstance(label, dict):
+            en, ru = label.get("en", ""), label.get("ru", "")
+        else:
+            en, ru = "", ""
+        if not en:
+            continue
+        resource_map[rid] = {"id": rid, "name": en, "nameRu": ru or "",
+                             "image": item.get("imageFilename", ""), "category": item.get("type", "")}
+    for rid, item in items.items():
+        rec = item.get("recipe")
+        if not isinstance(rec, dict) or not rec or rid not in resource_map:
+            continue
+        parts = []
+        for ing_id, quantity in rec.items():
+            try:
+                qty = int(quantity)
+            except (TypeError, ValueError):
+                continue
+            if qty <= 0 or ing_id not in resource_map:
+                continue
+            parts.append({"id": ing_id, "qty": qty})
+        if not parts or len(parts) != len(rec):
+            continue  # Skip incomplete or ambiguous ingredient data
+        recipes.append({"id": rid, "ingredients": parts,
+                        "bench": item.get("craftBench", "")})
+    if len(recipes) < 20:
+        raise RuntimeError("ARC Tracker has too few validated crafting recipes")
+    out = ROOT / "catalog" / "recipes.json"
+    out.write_text(json.dumps({"source":"ARC Tracker", "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                               "items": resource_map, "recipes": recipes}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"ARC Tracker crafting data: {len(recipes)} recipes, {len(resource_map)} items")
+
 def update(source, items):
     out = ROOT / "catalog" / f"{source}.json"
     data = {"source": source, "updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), "items": items}
@@ -201,6 +250,10 @@ def main():
             if args.source == "ardb":
                 raise
             print("Warning: ARDB unavailable, existing cache kept: " + str(exc), file=sys.stderr)
+    try:
+        build_crafting_index()
+    except Exception as exc:
+        print("Warning: crafting data unavailable, previous recipes kept: " + str(exc), file=sys.stderr)
     if not success:
         raise RuntimeError("Both APIs unavailable; cached catalogs left unchanged")
 
