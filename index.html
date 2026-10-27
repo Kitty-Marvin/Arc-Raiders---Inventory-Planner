@@ -162,6 +162,89 @@
 #stashGridHost .inventory .slot{display:flex}
 #stashGridHost .inventory .slot[hidden]{display:none!important}
 @media(max-width:700px){.stash-toolbar{align-items:stretch}.stash-sort-label{margin-left:auto}}
+
+/* v6.7 — In-game-inspired rarity glow and circular STASH category pictograms.
+   Rarity indicator is a restrained diagonal wash, not a solid opaque tile. */
+#stashGridHost .slot.filled{
+  --rarity-rgb:112,125,138;
+  isolation:isolate;
+  background:linear-gradient(150deg,#303c47 0%,#17222c 100%);
+}
+#stashGridHost .slot.filled[data-rarity="common"]{--rarity-rgb:173,180,190}
+#stashGridHost .slot.filled[data-rarity="uncommon"]{--rarity-rgb:63,190,97}
+#stashGridHost .slot.filled[data-rarity="rare"]{--rarity-rgb:20,154,235}
+#stashGridHost .slot.filled[data-rarity="epic"]{--rarity-rgb:203,59,163}
+#stashGridHost .slot.filled[data-rarity="legendary"]{--rarity-rgb:242,170,24}
+#stashGridHost .slot.filled[data-rarity="amplified"]{--rarity-rgb:232,117,58}
+#stashGridHost .slot.filled::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  background:linear-gradient(25deg,
+    rgba(var(--rarity-rgb),.72) 0%,
+    rgba(var(--rarity-rgb),.39) 42%,
+    rgba(var(--rarity-rgb),.12) 82%);
+  clip-path:polygon(0 33%,0 100%,100% 100%);
+  opacity:.84;
+}
+#stashGridHost .slot.filled:hover{filter:brightness(1.12)}
+#stashGridHost .slot.filled > img,
+#stashGridHost .slot.filled > .name,
+#stashGridHost .slot.filled > .empty-plus,
+#stashGridHost .slot.filled > .bp-art{
+  position:relative;
+  z-index:1;
+}
+#stashGridHost .slot.filled > .slotnum,
+#stashGridHost .slot.filled > .qty{z-index:2}
+#stashGridHost .slot.filled.is-blueprint{
+  background:linear-gradient(145deg,#1f395c,#102138);
+}
+/* Category buttons follow the rounded vertical icon rail from the game. */
+.stash-category{
+  min-height:43px;
+  padding:5px 7px 5px 5px;
+  gap:9px;
+  border-color:transparent;
+  border-radius:23px 7px 7px 23px;
+  background:transparent;
+}
+.stash-category:hover{background:#222d3b;border-color:#37495d}
+.stash-category.active{background:#243241;color:#f4f4f6;border-color:#6b7884}
+.stash-category .cat-icon{
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  background:#343947;
+  color:#aeb7c3;
+  flex-shrink:0;
+  box-shadow:inset 0 0 0 1px #535c6977;
+}
+.stash-category.active .cat-icon{
+  background:#f1ede5;
+  color:#111722;
+  box-shadow:0 0 0 1px #d8d2cb,0 0 11px #d0d7e820;
+}
+.stash-category .cat-icon img{
+  width:23px;
+  height:23px;
+  filter:brightness(0) invert(.72);
+}
+.stash-category.active .cat-icon img{filter:brightness(0) saturate(100%)}
+.stash-category .cat-fallback{
+  font-size:20px;
+  line-height:1;
+  font-weight:800;
+}
+.stash-category .cat-name{font-size:10px;font-weight:700;letter-spacing:.15px}
+.stash-category .cat-count{opacity:.72}
+@media(max-width:900px){
+ .stash-category{border-radius:23px;min-height:42px;padding:4px 9px 4px 4px}
+ .stash-category .cat-icon{width:32px;height:32px}
+}
+
 </style>
 </head>
 <body>
