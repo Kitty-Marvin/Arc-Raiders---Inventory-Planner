@@ -48,7 +48,7 @@ const demoItems = [
 const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
-let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
+let allowCloudLogin=false;let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
@@ -214,7 +214,7 @@ function setLogin(messageText=''){$('loginOverlay').hidden=false;$('loginMessage
 async function initialize(){restore();renderAll();renderCatalog();demoLogin();
  if(!configured){setStatus('Гость · локальный режим');return}
  try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
-  onAuthStateChanged(auth,async u=>{if(u){demoChosen=false;await startCloud(u)}else if(mode!=='demo'){demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
+  onAuthStateChanged(auth,async u=>{if(u&&allowCloudLogin){demoChosen=false;await startCloud(u)}else if(!u&&mode!=='demo'){demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
  }catch(err){setLogin('Ошибка Firebase: '+message(err))}
 }
 $('loginOpen').addEventListener('click',()=>setLogin());
@@ -230,15 +230,15 @@ $('signupToggle').addEventListener('click',()=>{
 });
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!configured||!auth){$('loginMessage').textContent='Сначала заполните firebase-config.js';return}
  const btn=$('authSubmit');btn.disabled=true;$('loginMessage').textContent=registerMode?'Создаём аккаунт…':'Проверка email и пароля…';
- try{demoChosen=false;const email=$('loginEmail').value.trim(),pass=$('loginPassword').value;
+ try{allowCloudLogin=true;demoChosen=false;const email=$('loginEmail').value.trim(),pass=$('loginPassword').value;
   if(registerMode)await createUserWithEmailAndPassword(auth,email,pass);
   else await signInWithEmailAndPassword(auth,email,pass);
   $('loginPassword').value='';$('loginMessage').textContent='';
- }catch(err){$('loginMessage').textContent=message(err)}finally{btn.disabled=false}
+ }catch(err){allowCloudLogin=false;$('loginMessage').textContent=message(err)}finally{btn.disabled=false}
 });
 $('demoMode').addEventListener('click',async()=>{if(auth?.currentUser)await signOut(auth);demoLogin()});
 $('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!confirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
- if(mode==='cloud'&&auth){await signOut(auth);demoLogin()}else demoLogin()
+ if(mode==='cloud'&&auth){allowCloudLogin=false;await signOut(auth);demoLogin()}else demoLogin()
 });
 $('syncRefresh').addEventListener('click',refreshCloud);
 window.addEventListener('online',()=>{if(mode==='cloud'&&ready&&!halted&&dirty>saved)saveCloud()});
@@ -461,7 +461,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openGearDropdown){c
 function putCatalogRef(id,ref){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');
  if(ref==='augment'){const a=canonicalAugment(item.name);if(a)layoutAugment(a.id);else toast('Этот предмет не является известным аугментом');return}
  if(ref==='shield:0'&&!canEquipShield(item)){toast('Этот щит не поддерживается выбранным AUGMENT');return}
-  putRef(ref,normSlot({...item,qty:1}));compactOverflow();persist();renderAll();
+  putRef(ref,normSlot({...item,qty:$('singleAdd').checked?1:Math.max(1,Number(item.stackMax)||1)}));compactOverflow();persist();renderAll();
 }
 function moveRef(from,to){if(from===to)return;if(from.startsWith('overflow')&&to.startsWith('overflow'))return;
  const a=getRef(from),b=getRef(to);if(!a)return;
@@ -516,11 +516,13 @@ function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(kind==='all'||stashKind(x)===kind)&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" title="Открыть на MetaForge" href="https://metaforge.app/arc-raiders/database/item/${esc(x.slug)}">↗</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){
+ const selectedKind=$('catalogKind').value||'all';
  $('catalogKind').innerHTML=STASH_CATEGORIES.map(c=>`<option value="${esc(c[0])}">${esc(c[1])} ${esc(c[3])}</option>`).join('');
+ $('catalogKind').value=STASH_CATEGORIES.some(x=>x[0]===selectedKind)?selectedKind:'all';
  const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
@@ -563,7 +565,7 @@ function applySaved(x){if(!x||!Array.isArray(x.slots))throw Error('Неверн�
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('columns').addEventListener('change',e=>{state.columns=Number(e.target.value);persist();renderGrid()});$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-capacity]');if(b)updateCapacity(b.dataset.capacity)});
 $('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
-$('catalogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
+$('catalogGrid').addEventListener('click',e=>{if(e.target.closest('.item-meta-link'))return;const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
 $('catalogGrid').addEventListener('dragstart',e=>{const b=e.target.closest('[data-item]');if(b){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'catalog',id:b.dataset.item}));e.dataTransfer.effectAllowed='copy'}});
 // Drop a STASH item on the catalog to remove exactly that stack.
 const catalogDropZone=$('catalogDropZone'),catalogDropHint=$('catalogDropHint');
