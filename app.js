@@ -683,6 +683,25 @@ function categories(){
  $('catalogKind').innerHTML=STASH_CATEGORIES.map(c=>`<option value="${esc(c[0])}">${esc(c[1])} ${esc(c[3])}</option>`).join('');
  $('catalogKind').value=STASH_CATEGORIES.some(x=>x[0]===selectedKind)?selectedKind:'all';
  const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
+// Prefer verified RU names; never present guessed machine translations as official.
+// Search always indexes the English name, the verified Russian name and aliases.
+const ITEM_RU_ALIASES={
+ 'anvil splitter':'Разделитель Наковальни',
+ 'amplification module mk. i':'Модуль амплификации I',
+ 'amplification module mk. ii':'Модуль амплификации II',
+ 'amplification module mk. iii':'Модуль амплификации III',
+ 'amplification module mk. iv':'Модуль амплификации IV',
+ 'amplification module mk. v':'Модуль амплификации V'
+};
+function applyItemNames(items){
+ for(const item of items){
+  if(!item.nameRu){
+   const alias=ITEM_RU_ALIASES[String(item.name||'').toLowerCase()];
+   if(alias)item.nameRu=alias;
+  }
+ }
+ return enrichAmplifiedNames(items);
+}
 function enrichAmplifiedNames(items){
  const bases=new Map();
  for(const item of items){
@@ -703,7 +722,7 @@ function enrichAmplifiedNames(items){
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
   if(!Array.isArray(data.items)||!data.items.length)throw new Error('Каталог ещё не загружен. В GitHub → Actions запустите «Update ARC items catalog».');
-  catalog=enrichAmplifiedNames(data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image),rarity:isBlueprint(x)?'':String(x.rarity||'')})));
+  catalog=applyItemNames(data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image),rarity:isBlueprint(x)?'':String(x.rarity||'')})));
   shown=80;categories();renderCatalog();syncCatalogMetadata();st.className='catalogstatus ok';st.textContent=`${catalog.length} предметов · ${source==='metaforge'?'MetaForge':'ARDB'} · обновлён ${data.updatedAt||'вручную'}`;
  }catch(err){if(source!==$('source').value)return;catalog=demoItems;shown=80;categories();renderCatalog();st.className='catalogstatus fail';st.textContent='Демонстрационный каталог (8 предметов). '+err.message}
  finally{$('refreshBtn').disabled=false}
