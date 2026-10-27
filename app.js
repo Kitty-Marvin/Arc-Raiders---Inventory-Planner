@@ -262,7 +262,7 @@ async function guardPlanNavigation(){
   $('actionInput').hidden=true;$('actionInputLabel').hidden=true;$('actionDiscard').hidden=false;
   $('actionConfirm').firstChild.textContent='Сохранить ';$('actionOverlay').hidden=false;$('actionConfirm').focus();
  });
- if(choice==='save'){saveExistingPlanChanges();return true}
+ if(choice==='save'){saveExistingPlanChanges();if(mode==='cloud'&&dirty>saved)await saveCloud();return mode!=='cloud'||dirty<=saved}
  if(choice==='discard'){const p=builds.find(b=>b.name===activePlanNames[area]);if(p){state=normState(p,area);renderAll()}return true}
  return false;
 }
@@ -729,15 +729,15 @@ updateBackToTop();
 function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){
  const selected=$('catalogKind').value||'all';
- $('catalogKindIcons').innerHTML=STASH_CATEGORIES.map(c=>`<button type="button" class="${selected===c[0]?'active':''}" data-kind="${esc(c[0])}" title="${esc(c[1])}" aria-label="${esc(c[1])}" aria-pressed="${selected===c[0]}"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${c[2]}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="kind-fallback" hidden>${esc(c[3])}</span></button>`).join('');
+ $('catalogKindIcons').innerHTML=STASH_CATEGORIES.map(c=>`<button type="button" class="${selected===c[0]?'active':''}" data-kind="${esc(c[0])}" aria-label="${esc(c[1])}" aria-pressed="${selected===c[0]}"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${c[2]}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="kind-fallback" hidden>${esc(c[3])}</span></button>`).join('');
  const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value,sort=$('catalogSort').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(kind==='all'||stashKind(x)===kind)&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  if(sort==='rarity'){const rank={common:1,uncommon:2,rare:3,epic:4,legendary:5,amplified:6};arr.sort((a,b)=>(rank[String(b.rarity||'').toLowerCase()]||0)-(rank[String(a.rarity||'').toLowerCase()]||0)||a.name.localeCompare(b.name));}
  else if(sort==='name')arr.sort((a,b)=>a.name.localeCompare(b.name,'en'));
  else if(sort==='value')arr.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0)||a.name.localeCompare(b.name));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
- $('showMore').hidden=arr.length<=shown;
+ $('catalogGrid').innerHTML=arr.map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('showMore').hidden=true;
 }
 function categories(){
  const selectedKind=$('catalogKind').value||'all';
@@ -835,7 +835,7 @@ function hideItemTooltip(){itemTooltip.hidden=true}
 $('inventory').addEventListener('pointerover',e=>{
  const slot=e.target.closest('[data-slot]');if(!slot||area!=='stash')return;
  const item=state.slots[Number(slot.dataset.slot)];if(!item){hideItemTooltip();return}
- itemTooltip.innerHTML='<strong>'+esc(item.name)+'</strong>'+(item.nameRu?'<span class="tooltip-ru">'+esc(item.nameRu)+'</span>':'')+'<span class="tooltip-meta">×'+item.qty+(item.collected?' · Собрано':' · Не собрано')+'</span>';itemTooltip.hidden=false;
+ itemTooltip.innerHTML='<strong>'+esc(item.name)+'</strong>'+(item.nameRu?'<span class="tooltip-ru">'+esc(item.nameRu)+'</span>':'')+'<span class="tooltip-meta">×'+item.qty+'</span><span class="tooltip-state '+(item.collected?'is-collected':'is-missing')+'">'+(item.collected?'✓ Собрал':'✕ Не собрал')+'</span>';itemTooltip.hidden=false;
 });
 $('inventory').addEventListener('pointermove',e=>{if(itemTooltip.hidden)return;itemTooltip.style.left=Math.max(5,Math.min(innerWidth-280,e.clientX+16))+'px';itemTooltip.style.top=Math.max(5,Math.min(innerHeight-105,e.clientY+18))+'px'});
 $('inventory').addEventListener('pointerleave',hideItemTooltip);
@@ -851,6 +851,30 @@ $('catalogGrid').addEventListener('pointermove',e=>{
  itemTooltip.style.top=Math.max(5,Math.min(innerHeight-105,e.clientY+18))+'px';
 });
 $('catalogGrid').addEventListener('pointerleave',hideItemTooltip);
+
+document.addEventListener('pointerover',e=>{
+ const el=e.target.closest('[title]');
+ if(!el||el.closest('[data-slot]')||el.closest('[data-item]'))return;
+ const label=el.getAttribute('title');
+ if(!label)return;
+ el.dataset.uiHint=label;el.removeAttribute('title');
+});
+document.addEventListener('pointerover',e=>{
+ const el=e.target.closest('[data-ui-hint]');
+ if(!el||e.target.closest('[data-slot]')||e.target.closest('[data-item]'))return;
+ itemTooltip.innerHTML='<span class="tooltip-hint">'+esc(el.dataset.uiHint)+'</span>';
+ itemTooltip.hidden=false;
+});
+document.addEventListener('pointermove',e=>{
+ if(itemTooltip.hidden)return;
+ itemTooltip.style.left=Math.max(5,Math.min(innerWidth-280,e.clientX+16))+'px';
+ itemTooltip.style.top=Math.max(5,Math.min(innerHeight-105,e.clientY+18))+'px';
+});
+document.addEventListener('pointerout',e=>{
+ const from=e.target.closest('[data-ui-hint]');
+ if(from&&!from.contains(e.relatedTarget))hideItemTooltip();
+});
+
 
 $('inventory').addEventListener('click',e=>{const toggle=e.target.closest('[data-collected-slot]');if(toggle){e.stopPropagation();toggleCollected(Number(toggle.dataset.collectedSlot));return}const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
 $('catalogGrid').addEventListener('click',e=>{if(e.target.closest('.item-meta-link'))return;const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
@@ -999,7 +1023,7 @@ $('savedList').addEventListener('click',async e=>{
  else if(del){const i=Number(del.dataset.delete),b=builds[i];if(!b||!await siteConfirm('Удалить сборку «'+b.name+'»?'))return;
   if(b.shareId&&!(await revokeBuild(b,true)))return;
   const index=builds.indexOf(b);if(index>=0){builds.splice(index,1);if(activePlanNames[area]===b.name)activePlanNames[area]=null;persist();renderSaves()}
- }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;if(activePlanNames[area]!==b.name&&!await guardPlanNavigation())return;applySaved(b,b.name);toast('Открыта сборка: '+b.name)}
+ }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;if(!await guardPlanNavigation())return;applySaved(b,b.name);toast('Открыта сборка: '+b.name)}
 });
 
 function exportStashPDF(){
@@ -1020,9 +1044,9 @@ function exportStashPDF(){
  const details=items.map(({item,index})=>'<section class="detail" id="'+unique+index+'"><b>Ячейка '+(index+1)+'</b>'+
  '<h3>'+escapeHTML(item.name)+'</h3>'+(item.nameRu?'<p>'+escapeHTML(item.nameRu)+'</p>':'')+
  '<p>Количество: '+Number(item.qty||1)+'</p><a href="#top">↑ К складу</a></section>').join('');
- const css="\n@page{size:180mm SHEET_HEIGHT;margin:8mm}\n:root{color-scheme:dark}\n*{box-sizing:border-box}\nhtml,body{background:#0c151d!important;color:#e6edf2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}\nbody{margin:0;font:12px/1.4 Arial,'Segoe UI',sans-serif}\nheader{background:#192a34;border:1px solid #4c5c65;border-left:4px solid #efb75f;padding:14px 17px;margin-bottom:12px;break-after:avoid}\n.brand{font-size:10px;letter-spacing:1.5px;color:#edb76b;font-weight:800}\nh1{font-size:21px;margin:5px 0 6px;font-weight:800;letter-spacing:.6px}\n.muted{color:#a8bbc7;font-size:11px}\n.grid{display:grid;grid-template-columns:repeat(COL_COUNT,minmax(0,1fr));gap:3px;width:GRID_WIDTH;max-width:100%;margin:0 auto}\n.cell{aspect-ratio:1 / 1;height:auto;position:relative;display:flex;align-items:center;justify-content:center;border:1px solid #516572;border-radius:5px;text-decoration:none;color:#e8eef3;break-inside:avoid;overflow:hidden;background:#1e2c36}\n.cell.filled{border:2px solid #b98f54;background:radial-gradient(ellipse at 10% 100%,#3d3831,#1e2c36 70%)}\n.cell.r-common{border-color:#9faab2}.cell.r-uncommon{border-color:#5fb789}.cell.r-rare{border-color:#5bace1}\n.cell.r-epic{border-color:#bb7ed0}.cell.r-legendary{border-color:#ecb868}.cell.r-amplified{border-color:#df936c}\n.cell small{position:absolute;left:4px;top:2px;font-size:8px;color:#b6c3cb}\n.cell img{max-width:85%;max-height:75%;object-fit:contain}\n.cell b{position:absolute;bottom:2px;right:4px;font-size:11px;color:#fff}\n.plus,.cube{font-size:19px;color:#748a96}\n#details{break-before:auto;padding:6px 2px}\n#details h2{color:#edb86d;font-size:18px;border-bottom:1px solid #5e6c75;padding-bottom:8px}\n.detail{break-inside:avoid;background:#1b2b35;border-left:3px solid #dfab60;padding:10px 12px;margin:0 0 8px}\n.detail b{color:#f1c57f}.detail h3{font-size:14px;margin:5px 0;color:#fff}\n.detail p{color:#c3d1d9;margin:4px 0}.detail a{color:#edb86d;font-size:10px}\n@media screen{body{max-width:800px;margin:15px auto}}\n@media print{body{margin:0}.cell{height:auto;aspect-ratio:1 / 1}}\n".replace('COL_COUNT',String(columns)).replace('GRID_WIDTH',Math.min(480,columns*54)+'px');
+ const css="\n@page{size:A4 portrait;margin:13mm}\n:root{color-scheme:dark}\n*{box-sizing:border-box}\nhtml,body{background:#0c151d!important;color:#e6edf2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}\nbody{margin:0;font:12px/1.4 Arial,'Segoe UI',sans-serif}\nheader{background:#192a34;border:1px solid #4c5c65;border-left:4px solid #efb75f;padding:14px 17px;margin-bottom:12px;break-after:avoid}\n.brand{font-size:10px;letter-spacing:1.5px;color:#edb76b;font-weight:800}\nh1{font-size:21px;margin:5px 0 6px;font-weight:800;letter-spacing:.6px}\n.muted{color:#a8bbc7;font-size:11px}\n.grid{display:grid;grid-template-columns:repeat(COL_COUNT,minmax(0,1fr));gap:3px;width:GRID_WIDTH;max-width:100%;margin:0 auto}\n.cell{aspect-ratio:1 / 1;height:auto;position:relative;display:flex;align-items:center;justify-content:center;border:1px solid #516572;border-radius:5px;text-decoration:none;color:#e8eef3;break-inside:avoid;overflow:hidden;background:#1e2c36}\n.cell.filled{border:2px solid #b98f54;background:radial-gradient(ellipse at 10% 100%,#3d3831,#1e2c36 70%)}\n.cell.r-common{border-color:#9faab2}.cell.r-uncommon{border-color:#5fb789}.cell.r-rare{border-color:#5bace1}\n.cell.r-epic{border-color:#bb7ed0}.cell.r-legendary{border-color:#ecb868}.cell.r-amplified{border-color:#df936c}\n.cell small{position:absolute;left:4px;top:2px;font-size:8px;color:#b6c3cb}\n.cell img{max-width:85%;max-height:75%;object-fit:contain}\n.cell b{position:absolute;bottom:2px;right:4px;font-size:11px;color:#fff}\n.plus,.cube{font-size:19px;color:#748a96}\n#details{break-before:page;padding:6px 2px}\n#details h2{color:#edb86d;font-size:18px;border-bottom:1px solid #5e6c75;padding-bottom:8px}\n.detail{break-inside:avoid;background:#1b2b35;border-left:3px solid #dfab60;padding:10px 12px;margin:0 0 8px}\n.detail b{color:#f1c57f}.detail h3{font-size:14px;margin:5px 0;color:#fff}\n.detail p{color:#c3d1d9;margin:4px 0}.detail a{color:#edb86d;font-size:10px}\n@media screen{body{max-width:800px;margin:15px auto}}\n@media print{body{margin:0}.cell{height:auto;aspect-ratio:1 / 1}}\n".replace('COL_COUNT',String(columns)).replace('GRID_WIDTH',Math.min(480,columns*54)+'px');
  const rows=Math.ceil(state.capacity/columns);const pageHeight=Math.max(210,Math.ceil(47+rows*(Math.min(480,columns*54)/columns+3)*0.265+items.length*21+30));
- const dynamicCss=css.replace('SHEET_HEIGHT',pageHeight+'mm');
+ const dynamicCss=css;
  const html='<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>'+escapeHTML(title)+' — RAIDER’S UTILITY</title><style>'+dynamicCss+'</style></head><body>'+
  '<header id="top"><div class="brand">KITTY_MARVINS · RAIDER’S UTILITY</div><h1>'+escapeHTML(title)+'</h1><div class="muted">STASH · '+state.capacity+' ячеек · '+items.length+' занято · '+(state.capacity-items.length)+' свободно</div></header>'+
  '<div class="grid">'+cards+'</div><article id="details"><h2>ПРЕДМЕТЫ</h2><p class="muted">Нажми на занятую ячейку в PDF, чтобы перейти к названию предмета.</p>'+details+'</article></body></html>';
