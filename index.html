@@ -391,6 +391,17 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
   .catalog-kind-icons .kind-fallback{font-size:15px}
   .catalogfilters select{font-size:10px}
 }
+
+/* v7.3 compact square category controls, upright info icon, illustrated resource chips */
+.catalog-kind-icons{display:flex!important;align-items:center;gap:3px!important;justify-content:space-between;padding:0!important;margin:10px 0!important;overflow:visible!important}
+.catalog-kind-icons button{flex:0 1 auto!important;min-width:0!important;width:auto!important;max-width:35px;aspect-ratio:1!important;height:auto!important;min-height:0!important;padding:3px!important;border-radius:5px!important;display:grid!important;place-items:center}
+.catalog-kind-icons img{width:100%!important;height:100%!important;object-fit:contain!important}
+.catalog-kind-icons .kind-fallback{font-size:16px}
+.resource-chip{display:flex;align-items:center;gap:7px;max-width:100%;padding:4px 6px}
+.resource-chip-image,.resource-chip-fallback{height:30px;width:30px;object-fit:contain;flex:none}
+.resource-chip-name{font-size:12px}
+.catalog-item-wrap>.item-meta-link{font-family:Arial,'Segoe UI',sans-serif!important;font-style:normal!important;font-weight:800!important;transform:none!important;width:25px!important;height:25px!important;aspect-ratio:1!important;display:grid!important;place-items:center!important}
+@media(max-width:520px){.catalog-kind-icons button{max-width:29px;padding:2px!important}}
 </style>
 </head>
 <body>
@@ -410,7 +421,7 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
         <select id="stashSort" aria-label="Сортировка склада">
           <option value="none">Без сортировки</option>
           <option value="type">Категория</option>
-          <option value="rarity">По редкости</option>
+          <option value="rarity" selected>По редкости</option>
           <option value="name">По названию</option>
           <option value="value">По стоимости</option>
         </select>
@@ -448,7 +459,7 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 <div id="plansBottomAnchor"><section id="plansPanel" class="plans-panel"><div class="line"></div><div class="sectionlabel" id="plansTitle">ПЛАНЫ СКЛАДА</div><div class="lower"><div><div class="savebar"><input id="buildName" placeholder="Название плана (например: Основной склад)" maxlength="60"><button id="saveBuild" class="primary">Сохранить план склада</button></div><div id="savedList" class="saved-list"></div><p class="hint">У каждой сборки есть кнопка «Поделиться». Только ты выбираешь, какую сборку открыть друзьям. Ссылка показывает опубликованную копию, не будущие изменения.</p><div class="sharebox" id="shareLinkBox" hidden><label for="shareLinkInput">Ссылка на опубликованную сборку</label><div class="savebar"><input id="shareLinkInput" readonly aria-label="Ссылка на сборку"><button id="copyShareLink" class="primary">Копировать</button><button id="closeShareLink" class="small">×</button></div></div></div><div class="tools"><button id="exportBtn" class="small">Экспорт JSON</button><button id="exportAllBtn" class="small">Экспорт планов склада</button><button id="importBtn" class="small">Импорт JSON</button><input type="file" id="importFile" accept="application/json,.json" hidden></div></div></section></div>
 </div></section>
 <aside class="panel catalog-drop-zone" id="catalogDropZone"><div class="panelhead"><div><div class="eyebrow">БАЗА ПРЕДМЕТОВ</div><div class="paneltitle">КАТАЛОГ</div></div><div class="cataloghead"><select class="sourcepick" id="source"><option value="metaforge">MetaForge</option><option value="ardb">ARDB</option></select><button id="refreshBtn" class="small primary">Обновить</button></div></div>
-<div style="padding:0 16px 15px"><div class="searchline"><input id="search" type="search" placeholder="Поиск: Battery, Anvil, Ferro..." autocomplete="off"></div><div id="catalogKindIcons" class="catalog-kind-icons" aria-label="Категории с иконками"></div><select id="catalogKind" hidden aria-label="Внутренний фильтр категорий"><option value="all">ВСЁ</option></select><div class="catalogfilters"><select id="category" aria-label="Категории предметов"><option value="">Все категории</option></select><select id="catalogSort" aria-label="Сортировка каталога"><option value="default">Без сортировки</option><option value="rarity">По редкости</option><option value="name">По названию</option><option value="value">По стоимости</option></select><span class="slothelp" id="resultCount">0 предметов</span></div></div>
+<div style="padding:0 16px 15px"><div class="searchline"><input id="search" type="search" placeholder="Поиск: Battery, Anvil, Ferro..." autocomplete="off"></div><div id="catalogKindIcons" class="catalog-kind-icons" aria-label="Категории с иконками"></div><select id="catalogKind" hidden aria-label="Внутренний фильтр категорий"><option value="all">ВСЁ</option></select><div class="catalogfilters"><select id="category" aria-label="Категории предметов"><option value="">Все категории</option></select><select id="catalogSort" aria-label="Сортировка каталога"><option value="rarity">По редкости</option><option value="name">По названию</option><option value="value">По стоимости</option></select><span class="slothelp" id="resultCount">0 предметов</span></div></div>
 <div class="catalog-addmode"><label><input id="singleAdd" type="checkbox"> Добавлять по одному <span class="hint">(по умолчанию — полный Stack)</span></label></div><div id="catalogDropHint" class="catalog-drop-hint" role="status" aria-live="polite" hidden><span class="catalog-drop-symbol" aria-hidden="true">↘</span><span>УБРАТЬ ИЗ STASH<small>Отпустите предмет здесь, чтобы освободить ячейку</small></span></div>
 <div class="catalogstatus" id="catalogStatus" role="status">Каталог · поиск данных…</div><div class="catalogscroll"><div class="cataloggrid" id="catalogGrid"></div><button class="showmore" id="showMore" hidden>Показать ещё</button></div></aside>
 </div>
@@ -468,5 +479,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=7.2-auth-catalog"></script>
+<script type="module" src="./app.js?v=7.3-session-resources"></script>
 </body></html>
