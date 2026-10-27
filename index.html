@@ -49,6 +49,28 @@
 .shield-dropdown{width:min(355px,85vw)}
 @media(max-width:850px){.shield-picker-anchor{max-width:250px}}
 @media(max-width:520px){.shield-section{padding:11px}.slot-dropdown{width:min(345px,86vw)}.shield-dropdown{width:min(310px,82vw)}.dropdown-options{max-height:290px}}
+
+/* v6.2 paired equipment slots */
+.raidheadline{align-items:center;justify-content:space-between;margin-bottom:14px}
+.raidheadline .augmentdetails{margin:0;flex:1}
+.raidleft .equipment-header{margin-top:0;margin-bottom:8px}
+.equipment-pair{margin-bottom:22px;align-items:stretch;gap:8px}
+.equipment-picker-anchor{position:relative;min-width:0}
+.equipment-picker-anchor:focus-within{z-index:90}
+.equipment-pair .augment-field{max-width:none;flex:none;z-index:auto}
+.equipment-label{font-weight:800;font-size:10px;color:#9bb0bc;letter-spacing:1.2px;margin:0 0 6px}
+.equipment-pair .augment-selector{display:flex;position:relative;align-items:center;justify-content:center;flex-direction:column;gap:3px;width:100%;max-width:none;height:110px;min-height:110px;border:1px solid #7b9ca8;border-radius:5px;padding:7px 5px;background:linear-gradient(155deg,#2e4551,#16252e);font-size:10px;font-weight:700;line-height:1.15;text-align:center}
+.equipment-pair .augment-selector:hover{border-color:#d6e6eb}
+.equipment-pair .augment-selector .augment-icon{width:58%;height:55%;object-fit:contain;flex-shrink:1}
+.equipment-pair .augment-selector .augment-fallback{font-size:24px;color:#95aeb9}
+.equipment-pair .augment-selector .name{display:block;max-width:100%;font-size:10px;font-weight:700;line-height:1.15;color:#d6e2e6;overflow:hidden;text-overflow:ellipsis;margin:0 0 8px}
+.equipment-pair .augment-selector .selector-caret{position:absolute;right:8px;bottom:4px;margin:0;color:#9cc9d1}
+.equipment-pair .shield-picker-anchor{max-width:none;width:100%}
+.equipment-pair .shield-slot{width:100%}
+.equipment-pair .shield-slot>.raid-special{width:100%;height:110px;min-height:110px;border:1px solid #7b9ca8}
+.equipment-pair #shieldDropdown{left:auto;right:0}
+.equipment-pair .slot-dropdown{top:calc(100% + 6px)}
+@media(max-width:520px){.equipment-pair .augment-selector,.equipment-pair .shield-slot>.raid-special{height:92px;min-height:92px}.equipment-pair .augment-selector .name{font-size:9px}}
 </style>
 </head>
 <body>
@@ -61,13 +83,25 @@
 <p id="stashNote" class="hint">Обычный склад начинается с 64 ячеек. Быстрые значения отражают расширения по 24 слота до 328. Дополнительные бонусы можно учесть вручную.</p><div class="line"></div><div class="summary"><span class="countchip">Занято <b id="usedCount">0</b> / <b id="totalCount">64</b></span><span class="countchip">Свободно <b id="freeCount">64</b></span><span class="countchip">Предметов <b id="itemCount">0</b></span></div>
 <div id="stashGridHost"><div class="inventory" id="inventory" aria-label="Сетка ячеек инвентаря"></div></div>
 <div id="raidLayout" class="raidlayout" hidden>
-  <div class="raidheadline"><div class="augment-field"><div class="eyebrow">LOADOUTS / AUGMENT</div><button id="augmentSelector" type="button" class="augment-selector" aria-haspopup="listbox" aria-expanded="false" aria-controls="augmentOptions" title="Открыть список аугментов">Выбрать аугмент</button>
-  <div id="augmentDropdown" class="slot-dropdown" hidden><div class="dropdown-heading">AUGMENT <span>Выбери аугмент</span></div><input id="augmentFilter" class="dropdown-filter" type="search" placeholder="Поиск аугмента…" aria-label="Поиск аугмента" autocomplete="off"><div id="augmentOptions" class="dropdown-options" role="listbox" aria-label="Список аугментов"></div></div>
-  <div id="augmentDetails" class="augmentdetails"></div></div><div class="raidmetric" id="raidWeight"></div></div>
+  <div class="raidheadline"><div class="augmentdetails" id="augmentDetails"></div><div class="raidmetric" id="raidWeight"></div></div>
   <div class="raidcolumns">
-    <div class="raidleft"><div class="shield-section"><div class="raidsection">SHIELD <span class="shield-caption">отдельный слот</span></div><div class="shield-picker-anchor"><div class="shield-slot" id="raidShield"></div>
-  <div id="shieldDropdown" class="slot-dropdown shield-dropdown" hidden><div class="dropdown-heading">SHIELD <span>Только щиты</span></div><input id="shieldFilter" class="dropdown-filter" type="search" placeholder="Поиск щита…" aria-label="Поиск щита" autocomplete="off"><div id="shieldOptions" class="dropdown-options" role="listbox" aria-label="Список щитов"></div></div>
- </div></div><div class="raidsection weapons-header">WEAPONS</div><div class="raidgear" id="raidGear"></div><div class="raidsection">BACKPACK <span id="raidBagCount"></span></div><div id="raidBackpackHost"></div></div>
+    <div class="raidleft">
+      <div class="raidsection equipment-header">EQUIPMENT</div>
+      <div class="raidgear equipment-pair">
+        <div class="equipment-picker-anchor augment-field">
+          <div class="equipment-label">AUGMENT</div>
+          <button id="augmentSelector" type="button" class="raid-special gearslot augment-selector" aria-haspopup="listbox" aria-expanded="false" aria-controls="augmentOptions" title="Выбрать аугмент">Выбрать аугмент</button>
+          <div id="augmentDropdown" class="slot-dropdown" hidden><div class="dropdown-heading">AUGMENT <span>Выбери аугмент</span></div><input id="augmentFilter" class="dropdown-filter" type="search" placeholder="Поиск аугмента…" aria-label="Поиск аугмента" autocomplete="off"><div id="augmentOptions" class="dropdown-options" role="listbox" aria-label="Список аугментов"></div></div>
+        </div>
+        <div class="equipment-picker-anchor shield-picker-anchor">
+          <div class="equipment-label">SHIELD</div>
+          <div class="shield-slot" id="raidShield"></div>
+          <div id="shieldDropdown" class="slot-dropdown shield-dropdown" hidden><div class="dropdown-heading">SHIELD <span>Только совместимые щиты</span></div><input id="shieldFilter" class="dropdown-filter" type="search" placeholder="Поиск щита…" aria-label="Поиск щита" autocomplete="off"><div id="shieldOptions" class="dropdown-options" role="listbox" aria-label="Список щитов"></div></div>
+        </div>
+      </div>
+      <div class="raidsection weapons-header">WEAPONS</div><div class="raidgear" id="raidGear"></div>
+      <div class="raidsection">BACKPACK <span id="raidBagCount"></span></div><div id="raidBackpackHost"></div>
+    </div>
     <div class="raidright"><div class="raidsection">QUICK USE <span id="raidQuickCount"></span></div><div class="raidslots" id="raidQuick"></div><div class="raidsection" id="raidExtraTitle">AUGMENTED SLOTS</div><div class="raidslots" id="raidAugmented"></div><div class="raidsection">SAFE POCKET <span id="raidSafeCount"></span></div><div class="raidslots" id="raidSafe"></div></div>
   </div>
   <div class="raidoverflow" id="raidOverflowBox" hidden><div class="raidsection">НЕ РАЗМЕЩЕНО <span id="raidOverflowCount"></span></div><p class="hint">При смене аугмента лишние предметы сохраняются здесь. Перетащи их в освободившиеся ячейки. Они не входят в рейдовый комплект.</p><div id="raidOverflow" class="raidslots"></div></div>
