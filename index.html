@@ -90,12 +90,37 @@
 .back-to-top:hover{background:#3b4b55;border-color:#e8a74e}
 .back-to-top:focus-visible{outline:2px solid #7fcdd0;outline-offset:3px}
 @media(max-width:520px){.wip-badge{top:-8px;right:8px;font-size:8px;padding:3px 5px}.back-to-top{right:12px;bottom:16px}.plans-panel.plans-at-top{padding:11px}}
+
+/* v6.4: WIP next to LOADOUTS and clearer STASH rarity/blueprint visual language */
+.areatab{display:flex;align-items:center;justify-content:center;gap:9px}
+.areatab .wip-badge{position:static;display:inline-block;flex-shrink:0;top:auto;right:auto;transform:rotate(-6deg);font-size:9px;vertical-align:middle}
+#stashGridHost .slot.filled[data-rarity="common"]{border:2px solid #a4abb0;box-shadow:inset 0 0 0 1px #a4abb055}
+#stashGridHost .slot.filled[data-rarity="uncommon"]{border:2px solid #82c58d;box-shadow:inset 0 0 0 1px #82c58d55}
+#stashGridHost .slot.filled[data-rarity="rare"]{border:2px solid #77b9eb;box-shadow:inset 0 0 0 1px #77b9eb55}
+#stashGridHost .slot.filled[data-rarity="epic"]{border:2px solid #bf88e7;box-shadow:inset 0 0 0 1px #bf88e755}
+#stashGridHost .slot.filled[data-rarity="legendary"]{border:2px solid #eabb64;box-shadow:inset 0 0 0 1px #eabb6455}
+#stashGridHost .slot.filled[data-rarity="amplified"]{border:2px solid #e9a96b;box-shadow:inset 0 0 0 1px #e9a96b55}
+#stashGridHost .slot.selected{outline:2px solid var(--accent);outline-offset:1px}
+#stashGridHost .slot.filled .rarity{display:none}
+.bp-art{position:relative;display:grid;place-items:center;isolation:isolate;flex-shrink:0;overflow:hidden;background-color:#16428d;background-image:linear-gradient(#8eb6f933 1px,transparent 1px),linear-gradient(90deg,#8eb6f933 1px,transparent 1px);background-size:10px 10px;border:1px solid #729ce1;border-radius:3px}
+.bp-art:after{content:"▤";position:absolute;left:3px;bottom:0;color:#dceaff;font-size:13px;font-weight:900;text-shadow:0 1px 3px #002953;pointer-events:none;z-index:2}
+.bp-art img{display:block;max-width:90%;max-height:90%;object-fit:contain;position:relative;z-index:1;filter:drop-shadow(0 2px 3px #001b3aaa)}
+.bp-art .blueprint-fallback{font-size:22px;color:#d9e9ff}
+.cataloggrid .bp-art{width:49px;height:49px}
+.cataloggrid .item.is-blueprint{border-color:#4269aa;background:linear-gradient(120deg,#203650,#202d36)}
+.cataloggrid .item.is-blueprint .itemsubtitle{color:#c1d6f2}
+#stashGridHost .slot.is-blueprint{background-color:#122646;background-image:linear-gradient(145deg,#193560,#122646)}
+#stashGridHost .slot.is-blueprint .bp-art{width:78%;height:70%;border:none;background-size:12px 12px}
+#stashGridHost .slot.is-blueprint .bp-art img{width:91%;height:91%;object-fit:contain;filter:drop-shadow(0 3px 5px #0009)}
+#stashGridHost .slot.is-blueprint .bp-art:after{font-size:16px}
+#stashGridHost .slot.is-blueprint>.name{position:relative;z-index:2}
+@media(max-width:520px){.areatab{gap:5px}.areatab .wip-badge{font-size:8px;padding:3px 4px}.cataloggrid .bp-art{width:42px;height:42px}}
 </style>
 </head>
 <body>
 <div class="shell">
 <header class="top"><div class="brand"><div class="brandmark">A</div><div><div class="over">RAIDER'S FIELD UTILITY / V 6.1 — STASH + LOADOUTS</div><h1>STASH & LOADOUT PLANNER</h1></div></div><div class="topmeta">ARC RAIDERS · НЕОФИЦИАЛЬНЫЙ ИНСТРУМЕНТ<br><strong id="saveStatus">Проверка облака...</strong><div class="topbuttons"><button class="small" id="syncRefresh" title="Получить свежие данные из облака">↻ Обновить</button> <button class="small subtle" id="logoutBtn" hidden>Выйти</button></div></div></header>
-<div class="areatabs" role="tablist" aria-label="Раздел планировщика"><button id="areaStash" class="areatab active" role="tab" aria-selected="true">STASH</button><button id="areaRaid" class="areatab" role="tab" aria-selected="false">LOADOUTS <span class="wip-badge" title="Under construction">🚧 UNDER CONSTRUCTION</span></button></div>
+<div class="areatabs" role="tablist" aria-label="Раздел планировщика"><button id="areaStash" class="areatab active" role="tab" aria-selected="true">STASH</button><button id="areaRaid" class="areatab" role="tab" aria-selected="false"><span>LOADOUTS</span><span class="wip-badge" title="Still being built">🚧 UNDER CONSTRUCTION</span></button></div>
 <div class="dashboard">
 <section class="panel"><div class="panelhead"><div><div class="eyebrow">01 / КОНФИГУРАЦИЯ</div><div class="paneltitle" id="workspaceTitle">МОЙ СКЛАД · STASH</div></div><button class="small subtle" id="clearBtn">Очистить ячейки</button></div><div class="content">
 <p class="intro" id="areaDescription">Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.</p><div class="controls"><div class="control"><label for="capacity">Количество ячеек</label><input id="capacity" type="number" min="1" max="600" value="64"></div><div class="control"><label for="columns">Столбцов</label><select id="columns"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>12</option></select></div><div class="control"><label>Быстрый размер</label><div class="presets" id="presets"></div></div></div>
