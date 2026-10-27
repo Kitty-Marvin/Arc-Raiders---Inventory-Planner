@@ -48,6 +48,7 @@ const demoItems = [
 const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
+let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
@@ -104,7 +105,35 @@ async function switchArea(next){
  return true;
 }
 $('areaStash').addEventListener('click',()=>switchArea('stash'));
-$('areaRaid').addEventListener('click',()=>switchArea('raid'));
+$('areaRaid').addEventListener('click',()=>{leaveResources();switchArea('raid')});
+$('areaStash').addEventListener('click',()=>leaveResources());
+$('areaResources').addEventListener('click',()=>openResources());
+function leaveResources(){resourcesOpen=false;$('resourcesPanel').hidden=true;$('mainDashboard').hidden=false;$('areaResources').classList.remove('active');$('areaResources').setAttribute('aria-selected','false')}
+async function openResources(){
+ resourcesOpen=true;$('mainDashboard').hidden=true;$('resourcesPanel').hidden=false;
+ for(const id of ['areaStash','areaRaid'])$(''+id).classList.remove('active');
+ $('areaResources').classList.add('active');$('areaResources').setAttribute('aria-selected','true');
+ if(!resourceData){$('resourceResults').textContent='Загрузка рецептов…';try{const r=await fetch('./catalog/recipes.json',{cache:'no-cache'});if(!r.ok)throw Error('Данные рецептов ещё не опубликованы');resourceData=await r.json();}catch(e){$('resourceResults').textContent='Не удалось загрузить рецепты: '+e.message;return}}
+ renderResources();
+}
+function renderResources(){
+ if(!resourceData)return;
+ const textQuery=$('resourceSearch').value.toLocaleLowerCase().trim();
+ const items=resourceData.items||{},recipes=resourceData.recipes||[];
+ const resources=[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(textQuery));
+ $('resourceList').innerHTML=resources.slice(0,100).map(id=>`<button type="button" data-resource="${esc(id)}" class="${resourceSelected===id?'active':''}">${validImage(items[id].image)?`<img src="${esc(items[id].image)}" alt="">`:''}<span>${esc(items[id].name)}${items[id].nameRu?'<small> · '+esc(items[id].nameRu)+'</small>':''}</span></button>`).join('');
+ if(!resourceSelected||!items[resourceSelected]){$('resourceResults').innerHTML='<p class="hint">Нажми нужный материал выше — покажем подходящие рецепты.</p>';return}
+ const matches=recipes.filter(r=>r.ingredients.some(i=>i.id===resourceSelected)).sort((a,b)=>(a.ingredients.length-b.ingredients.length)||(a.ingredients.reduce((x,y)=>x+y.qty,0)-b.ingredients.reduce((x,y)=>x+y.qty,0)));
+ $('resourceResults').innerHTML=matches.map(r=>{
+  const item=items[r.id];if(!item)return '';
+  const others=r.ingredients.filter(i=>i.id!==resourceSelected).length;
+  return `<article class="recipe-card"><div class="recipe-head">${validImage(item.image)?`<img src="${esc(item.image)}" alt="">`:''}<div><h3>${esc(item.name)}</h3><small>${esc(item.nameRu||'')}</small></div></div><p class="recipe-rank">${others===0?'ТОЛЬКО НУЖНЫЙ РЕСУРС':others+' дополнительных ресурсов'}</p><div class="recipe-ingredients">${r.ingredients.map(i=>`${esc(items[i.id]?.nameRu||items[i.id]?.name||i.id)} × ${i.qty}${i.id===resourceSelected?' 👁':''}`).join(' · ')}</div><button type="button" data-track="${esc(r.id)}">${resourceTracking.has(r.id)?'✓ В плане':'👁 Добавить в план отслеживания'}</button></article>`;
+ }).join('')||'<p class="hint">Подходящие рецепты не найдены.</p>';
+}
+$('resourceSearch').addEventListener('input',renderResources);
+$('resourceList').addEventListener('click',e=>{const b=e.target.closest('[data-resource]');if(!b)return;resourceSelected=b.dataset.resource;renderResources()});
+$('resourceResults').addEventListener('click',e=>{const b=e.target.closest('[data-track]');if(!b)return;if(resourceTracking.has(b.dataset.track))resourceTracking.delete(b.dataset.track);else resourceTracking.add(b.dataset.track);localStorage.setItem('arc-resource-tracking-v1',JSON.stringify([...resourceTracking]));renderResources();toast('Это план отслеживания. В игре отметь нужный крафт вручную.')});
+try{resourceTracking=new Set(JSON.parse(localStorage.getItem('arc-resource-tracking-v1')||'[]'))}catch{};
 
 function setStatus(s){$('saveStatus').textContent=s}
 function message(err){const code=err?.code||''; const messages={
@@ -126,7 +155,7 @@ function persist(){saveLocal();if(!ready)return;
 function applyRemote(payload,rev,announce=false){state=normState(payload.state,area);builds=normBuilds(payload.builds,area);rememberArea();remoteRevision=rev;dirty=0;saved=0;halted=false;pendingRemote=false;saveLocal();renderAll();setStatus('Синхронизировано · версия '+rev);if(announce)toast('Получены изменения с другого компьютера')}
 function stopCloud(){sessionToken++;if(unsubscribe){unsubscribe();unsubscribe=null}clearTimeout(saveTimer);ready=false;workspace=null;user=null;saveBusy=false;halted=false;dirty=0;saved=0;pendingRemote=false}
 async function startCloud(u){stopCloud();const epoch=sessionToken;user=u;mode='cloud';setStatus('Загрузка облачных данных…');$('loginOverlay').hidden=true;$('logoutBtn').hidden=false;
- workspace=doc(db,'users',u.uid,'planner',area==='stash'?'stash':'main');
+ $('loginOpen').hidden=true;workspace=doc(db,'users',u.uid,'planner',area==='stash'?'stash':'main');
  try{const snapshot=await getDocFromServer(workspace);if(epoch!==sessionToken)return;
   const remote=snapshot.exists()?snapshot.data():null;
   let uploadLocal=false;
@@ -180,14 +209,15 @@ async function refreshCloud(){if(mode==='demo'){toast('Демо работает
  try{const snap=await getDocFromServer(workspace);if(snap.exists())applyRemote(snap.data(),Number(snap.data().revision)||0,true);else{applyRemote({state:initial(area),builds:[]},0);}
  }catch(err){toast('Не удалось загрузить: '+message(err))}
 }
-function demoLogin(){stopCloud();demoChosen=true;mode='demo';ready=true;$('loginOverlay').hidden=true;$('logoutBtn').hidden=false;restore();renderAll();setStatus('Демо · сохранено только в браузере');fetchCatalog()}
+function demoLogin(){stopCloud();demoChosen=true;mode='demo';ready=true;$('loginOverlay').hidden=true;$('logoutBtn').hidden=true;$('loginOpen').hidden=false;restore();renderAll();setStatus('Демо · сохранено только в браузере');fetchCatalog()}
 function setLogin(messageText=''){$('loginOverlay').hidden=false;$('loginMessage').textContent=messageText;$('logoutBtn').hidden=true;setStatus('Требуется вход в Firebase');}
-async function initialize(){restore();renderAll();renderCatalog();
- if(!configured){setLogin('Firebase ещё не настроен. Заполните firebase-config.js по инструкции или откройте локальное демо.');return}
+async function initialize(){restore();renderAll();renderCatalog();demoLogin();
+ if(!configured){setStatus('Гость · локальный режим');return}
  try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
-  onAuthStateChanged(auth,async u=>{if(demoChosen)return;if(u)await startCloud(u);else{stopCloud();mode='login';state=initial(area);builds=[];rememberArea();renderAll();setLogin('Укажите пользователя, созданного в Firebase Authentication.')}},err=>setLogin(message(err)));
+  onAuthStateChanged(auth,async u=>{if(u){demoChosen=false;await startCloud(u)}else if(mode!=='demo'){demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
  }catch(err){setLogin('Ошибка Firebase: '+message(err))}
 }
+$('loginOpen').addEventListener('click',()=>setLogin());
 $('signupToggle').addEventListener('click',()=>{
  registerMode=!registerMode;
  $('loginTitle').textContent=registerMode?'Создать аккаунт':'Войти в планировщик';
@@ -208,7 +238,7 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!config
 });
 $('demoMode').addEventListener('click',async()=>{if(auth?.currentUser)await signOut(auth);demoLogin()});
 $('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!confirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
- if(mode==='cloud'&&auth)await signOut(auth);else{stopCloud();mode='login';setLogin('Демо завершено. Для синхронизации настройте Firebase.')}
+ if(mode==='cloud'&&auth){await signOut(auth);demoLogin()}else demoLogin()
 });
 $('syncRefresh').addEventListener('click',refreshCloud);
 window.addEventListener('online',()=>{if(mode==='cloud'&&ready&&!halted&&dirty>saved)saveCloud()});
@@ -483,13 +513,15 @@ window.addEventListener('scroll',updateBackToTop,{passive:true});
 backToTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
 updateBackToTop();
 function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
-function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
- const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
+function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value;
+ const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(kind==='all'||stashKind(x)===kind)&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · stack '+x.stackMax:''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
-function categories(){const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
+function categories(){
+ $('catalogKind').innerHTML=STASH_CATEGORIES.map(c=>`<option value="${esc(c[0])}">${esc(c[1])} ${esc(c[3])}</option>`).join('');
+ const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
   if(!Array.isArray(data.items)||!data.items.length)throw new Error('Каталог ещё не загружен. В GitHub → Actions запустите «Update ARC items catalog».');
@@ -518,7 +550,7 @@ function syncCatalogMetadata(){
  if(changed){persist();renderGrid();renderSaves();toast('Характеристики предметов обновлены')}
 }
 function firstEmpty(){return state.slots.findIndex(s=>!s)}
-function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(area==='stash'&&!isStashItem(item))return toast('Этот предмет не хранится в STASH');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
+function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(area==='stash'&&!isStashItem(item))return toast('Этот предмет не хранится в STASH');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');const qty=$('singleAdd').checked?1:Math.max(1,Number(item.stackMax)||1);state.slots[target]={...normSlot({...item,qty}),qty};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
 function updateCapacity(input){if(area==='raid')return;const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!confirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
  state.slots=state.slots.slice(0,n);while(state.slots.length<n)state.slots.push(null);state.capacity=n;if(state.selectedSlot>=n)state.selectedSlot=null;persist();renderGrid()}
 function openEditor(i){const item=typeof i==='string'?getRef(i):state.slots[i];if(!item)return;editingIndex=i;$('editTitle').textContent=item.nameRu||item.name;$('editImage').src=item.image||'';$('editImage').style.display=item.image?'block':'none';$('editInfo').textContent=(item.category||'Предмет')+(item.rarity?' · '+item.rarity:'');$('editQty').value=item.qty;$('editQty').max=item.stackMax||9999;$('stackHint').textContent=item.stackMax?'Максимальный стак по источнику: '+item.stackMax:'Размер стака не указан. Количество меняется вручную.';$('editOverlay').hidden=false;$('editQty').focus()}
@@ -568,6 +600,7 @@ catalogDropZone.addEventListener('drop',e=>{
 $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move';startStashDrop(Number(b.dataset.slot))}});
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
 $('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
+$('catalogKind').addEventListener('change',renderCatalog);
 $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
