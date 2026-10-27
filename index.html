@@ -115,6 +115,44 @@
 #stashGridHost .slot.is-blueprint .bp-art:after{font-size:16px}
 #stashGridHost .slot.is-blueprint>.name{position:relative;z-index:2}
 @media(max-width:520px){.areatab{gap:5px}.areatab .wip-badge{font-size:8px;padding:3px 4px}.cataloggrid .bp-art{width:42px;height:42px}}
+
+/* v6.5: native-inspired STASH category rail and catalog rarity */
+.stash-browser{display:grid;grid-template-columns:124px minmax(0,1fr);gap:12px;margin-top:14px}
+.stash-categories{display:flex;flex-direction:column;gap:5px;align-self:start}
+.stash-category{display:flex;align-items:center;text-align:left;gap:7px;width:100%;padding:7px 6px;border:1px solid #465461;border-radius:7px;background:#19252e;min-height:39px;color:#c0ced6}
+.stash-category:hover{border-color:#c6a477;background:#2b3841}
+.stash-category.active{background:#d8c7a7;border-color:#fff0c5;color:#14202a;font-weight:800}
+.stash-category .cat-icon{width:24px;height:24px;flex-shrink:0;display:grid;place-items:center;position:relative}
+.stash-category .cat-icon img{width:23px;height:23px;object-fit:contain;filter:brightness(0) invert(.86)}
+.stash-category.active .cat-icon img{filter:brightness(0)}
+.stash-category .cat-fallback{font-size:20px;line-height:1}
+.stash-category .cat-name{font-size:10px;line-height:1.2;overflow-wrap:anywhere}
+.stash-category .cat-count{margin-left:auto;font-size:10px;opacity:.7;font-variant-numeric:tabular-nums}
+.stash-item-area{min-width:0}
+.stash-filter-caption{color:#b5c5cc;font-size:11px;min-height:18px;display:flex;align-items:center;margin:0 0 3px}
+#stashGridHost .inventory{margin-top:0}
+.stash-filter-empty{padding:26px 12px;border:1px dashed #526777;border-radius:8px;background:#18242c;text-align:center;color:#a5bbc5;font-size:12px}
+.cataloggrid .item[data-rarity="common"]{border:2px solid #a4abb0}
+.cataloggrid .item[data-rarity="uncommon"]{border:2px solid #82c58d}
+.cataloggrid .item[data-rarity="rare"]{border:2px solid #77b9eb}
+.cataloggrid .item[data-rarity="epic"]{border:2px solid #bf88e7}
+.cataloggrid .item[data-rarity="legendary"]{border:2px solid #eabb64}
+.cataloggrid .item[data-rarity="amplified"]{border:2px solid #e9a96b}
+.cataloggrid .item[data-rarity=""]{border:1px solid #465461}
+.cataloggrid .item .item-rarity{font-size:10px;line-height:1.3;color:#a2b2bd;display:block;margin-top:3px}
+.cataloggrid .item[data-rarity="common"] .item-rarity{color:#c2c6ca}
+.cataloggrid .item[data-rarity="uncommon"] .item-rarity{color:#9ddaac}
+.cataloggrid .item[data-rarity="rare"] .item-rarity{color:#a4d6f5}
+.cataloggrid .item[data-rarity="epic"] .item-rarity{color:#d5adeb}
+.cataloggrid .item[data-rarity="legendary"] .item-rarity{color:#f1d397}
+.cataloggrid .item[data-rarity="amplified"] .item-rarity{color:#f1ca9d}
+@media(max-width:900px){
+ .stash-browser{grid-template-columns:1fr;gap:7px}
+ .stash-categories{display:flex;flex-direction:row;overflow-x:auto;scrollbar-width:thin;padding:3px 1px 8px}
+ .stash-category{width:auto;min-width:max-content;flex:0 0 auto;padding:7px 9px}
+ .stash-category .cat-name{font-size:11px}
+ .stash-category .cat-count{margin-left:3px}
+}
 </style>
 </head>
 <body>
@@ -125,7 +163,13 @@
 <section class="panel"><div class="panelhead"><div><div class="eyebrow">01 / КОНФИГУРАЦИЯ</div><div class="paneltitle" id="workspaceTitle">МОЙ СКЛАД · STASH</div></div><button class="small subtle" id="clearBtn">Очистить ячейки</button></div><div class="content">
 <p class="intro" id="areaDescription">Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.</p><div class="controls"><div class="control"><label for="capacity">Количество ячеек</label><input id="capacity" type="number" min="1" max="600" value="64"></div><div class="control"><label for="columns">Столбцов</label><select id="columns"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>12</option></select></div><div class="control"><label>Быстрый размер</label><div class="presets" id="presets"></div></div></div>
 <p id="stashNote" class="hint">Обычный склад начинается с 64 ячеек. Быстрые значения отражают расширения по 24 слота до 328. Дополнительные бонусы можно учесть вручную.</p><div class="line"></div><div class="summary"><span class="countchip">Занято <b id="usedCount">0</b> / <b id="totalCount">64</b></span><span class="countchip">Свободно <b id="freeCount">64</b></span><span class="countchip">Предметов <b id="itemCount">0</b></span></div>
-<div id="plansTopAnchor"></div><div id="stashGridHost"><div class="inventory" id="inventory" aria-label="Сетка ячеек инвентаря"></div></div>
+<div id="plansTopAnchor"></div><div id="stashGridHost"><div class="stash-browser">
+  <nav id="stashCategoryBar" class="stash-categories" aria-label="Категории предметов склада"></nav>
+  <div class="stash-item-area">
+    <div id="stashFilterCaption" class="stash-filter-caption" role="status" aria-live="polite"></div>
+    <div id="stashGridMount"><div class="inventory" id="inventory" aria-label="Сетка ячеек инвентаря"></div></div>
+  </div>
+</div></div>
 <div id="raidLayout" class="raidlayout" hidden>
   <div class="raidheadline"><div class="augmentdetails" id="augmentDetails"></div><div class="raidmetric" id="raidWeight"></div></div>
   <div class="raidcolumns">
