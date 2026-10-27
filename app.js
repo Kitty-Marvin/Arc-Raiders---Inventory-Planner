@@ -729,7 +729,7 @@ updateBackToTop();
 function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){
  const selected=$('catalogKind').value||'all';
- $('catalogKindIcons').innerHTML=STASH_CATEGORIES.map(c=>`<button type="button" class="${selected===c[0]?'active':''}" data-kind="${esc(c[0])}" aria-label="${esc(c[1])}" aria-pressed="${selected===c[0]}"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${c[2]}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="kind-fallback" hidden>${esc(c[3])}</span></button>`).join('');
+ $('catalogKindIcons').innerHTML=STASH_CATEGORIES.map(c=>`<button type="button" class="${selected===c[0]?'active':''}" data-kind="${esc(c[0])}" data-ui-hint="${esc(c[1])}" aria-label="${esc(c[1])}" aria-pressed="${selected===c[0]}"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${c[2]}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="kind-fallback" hidden>${esc(c[3])}</span></button>`).join('');
  const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value,sort=$('catalogSort').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(kind==='all'||stashKind(x)===kind)&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  if(sort==='rarity'){const rank={common:1,uncommon:2,rare:3,epic:4,legendary:5,amplified:6};arr.sort((a,b)=>(rank[String(b.rarity||'').toLowerCase()]||0)-(rank[String(a.rarity||'').toLowerCase()]||0)||a.name.localeCompare(b.name));}
