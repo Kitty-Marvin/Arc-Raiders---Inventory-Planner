@@ -508,7 +508,39 @@ $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('co
 $('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
 $('catalogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
 $('catalogGrid').addEventListener('dragstart',e=>{const b=e.target.closest('[data-item]');if(b){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'catalog',id:b.dataset.item}));e.dataTransfer.effectAllowed='copy'}});
-$('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move'}});
+// Drop a STASH item on the catalog to remove exactly that stack.
+const catalogDropZone=$('catalogDropZone'),catalogDropHint=$('catalogDropHint');
+let stashDragFrom=null;
+function clearStashDropState(){
+ stashDragFrom=null;catalogDropZone.classList.remove('can-remove','is-drop-ready');catalogDropHint.hidden=true;
+}
+function startStashDrop(from){
+ if(area!=='stash'||!state.slots[from])return;
+ stashDragFrom=from;catalogDropZone.classList.add('can-remove');catalogDropHint.hidden=false;
+}
+$('inventory').addEventListener('dragend',clearStashDropState);
+catalogDropZone.addEventListener('dragenter',e=>{
+ if(area==='stash'&&stashDragFrom!==null){e.preventDefault();catalogDropZone.classList.add('is-drop-ready')}
+});
+catalogDropZone.addEventListener('dragover',e=>{
+ if(area==='stash'&&stashDragFrom!==null){e.preventDefault();e.dataTransfer.dropEffect='move';catalogDropZone.classList.add('is-drop-ready')}
+});
+catalogDropZone.addEventListener('dragleave',e=>{
+ if(!catalogDropZone.contains(e.relatedTarget))catalogDropZone.classList.remove('is-drop-ready');
+});
+catalogDropZone.addEventListener('drop',e=>{
+ if(area!=='stash'||stashDragFrom===null)return;
+ e.preventDefault();e.stopPropagation();
+ let payload;try{payload=JSON.parse(e.dataTransfer.getData('text/plain'))}catch{clearStashDropState();return}
+ const from=Number(payload.from);
+ if(payload.kind!=='slot'||!Number.isInteger(from)||from!==stashDragFrom||from<0||from>=state.capacity||!state.slots[from]){
+  clearStashDropState();return;
+ }
+ const removed=state.slots[from].nameRu||state.slots[from].name;
+ state.slots[from]=null;state.selectedSlot=null;clearStashDropState();persist();renderGrid();
+ toast('Убрано из STASH: '+removed);
+});
+$('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move';startStashDrop(Number(b.dataset.slot))}});
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
 $('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
 $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
