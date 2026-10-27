@@ -214,7 +214,25 @@ $('syncRefresh').addEventListener('click',refreshCloud);
 window.addEventListener('online',()=>{if(mode==='cloud'&&ready&&!halted&&dirty>saved)saveCloud()});
 window.addEventListener('beforeunload',e=>{if(mode==='cloud'&&ready&&dirty>saved){e.preventDefault();e.returnValue=''}});
 
-function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button class="slot ${s?'filled':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>')+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
+// Only physical inventory items are offered in the STASH catalog.
+// This is a conservative category-based filter, not a game API entitlement check.
+const NON_STASH_CATEGORIES=new Set(['outfits','outfit','cosmetic','cosmetics','furniture','design','research','stencil unlock','emote','skin','appearance']);
+function isBlueprint(item){return /^(blueprint|blueprints)$/i.test(String(item?.category||'').trim())||/\bblueprint\b/i.test(item?.name||'')}
+function isStashItem(item){
+ const name=String(item?.name||''),category=String(item?.category||'').trim().toLowerCase();
+ if(NON_STASH_CATEGORIES.has(category))return false;
+ if(/\((outfit|skin|emote|backpack charm|backpack attachment|face style|colour|color)\)/i.test(name))return false;
+ if(/^(amplified\s|amplification module\b)/i.test(name)||String(item?.rarity||'').toLowerCase()==='amplified')return false;
+ if(/^(coins|raider tokens|research points)$/i.test(name))return false;
+ // Category "Stencil" may refer to a physical stencil; keep it until proven otherwise.
+ if(category==='misc'&&/\b(face style|colour|color)\b/i.test(name))return false;
+ return true;
+}
+function blueprintArtwork(item){
+ const img=validImage(item?.image);
+ return `<span class="bp-art">${img?`<img src="${esc(img)}" alt="" loading="lazy" onerror="this.hidden=true">`:'<span class="blueprint-fallback">▤</span>'}</span>`;
+}
+function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
  const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
 }
 
@@ -382,7 +400,7 @@ function renderAreaUi(){
  const choices=stash?[64,88,112,136,160,184,208,232,256,280,304,328]:[12,16,18,20,24,30,36];
  $('presets').innerHTML=choices.map(n=>`<button class="small" data-capacity="${n}">${n}</button>`).join('');
  $('stashNote').hidden=!stash;
- $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';
+ $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';if(catalog.length)categories();renderCatalog();
 }
 // Floating return-to-top button, shared by STASH and LOADOUTS.
 const backToTop=$('backToTop');
@@ -392,12 +410,12 @@ backToTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}
 updateBackToTop();
 function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
- const arr=catalog.filter(x=>(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
- $('resultCount').textContent=arr.length+' / '+catalog.length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>'}<span class="itemdata"><span class="itemtitle">${esc(x.nameRu||x.name)}</span><span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span></span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
+ $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.nameRu||x.name)}</span><span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span></span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
-function categories(){const old=$('category').value,names=[...new Set(catalog.map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
+function categories(){const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
   if(!Array.isArray(data.items)||!data.items.length)throw new Error('Каталог ещё не загружен. В GitHub → Actions запустите «Update ARC items catalog».');
@@ -407,7 +425,7 @@ async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus
  finally{$('refreshBtn').disabled=false}
 }
 function firstEmpty(){return state.slots.findIndex(s=>!s)}
-function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
+function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(area==='stash'&&!isStashItem(item))return toast('Этот предмет не хранится в STASH');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
 function updateCapacity(input){if(area==='raid')return;const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!confirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
  state.slots=state.slots.slice(0,n);while(state.slots.length<n)state.slots.push(null);state.capacity=n;if(state.selectedSlot>=n)state.selectedSlot=null;persist();renderGrid()}
 function openEditor(i){const item=typeof i==='string'?getRef(i):state.slots[i];if(!item)return;editingIndex=i;$('editTitle').textContent=item.nameRu||item.name;$('editImage').src=item.image||'';$('editImage').style.display=item.image?'block':'none';$('editInfo').textContent=(item.category||'Предмет')+(item.rarity?' · '+item.rarity:'');$('editQty').value=item.qty;$('editQty').max=item.stackMax||9999;$('stackHint').textContent=item.stackMax?'Максимальный стак по источнику: '+item.stackMax:'Размер стака не указан. Количество меняется вручную.';$('editOverlay').hidden=false;$('editQty').focus()}
