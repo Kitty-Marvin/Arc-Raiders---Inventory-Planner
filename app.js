@@ -1,5 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
+import { getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import { getFirestore, doc, getDocFromServer, onSnapshot, runTransaction, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
@@ -142,7 +142,7 @@ function renderResources(){
    <p class="recipe-rank">НУЖНЫХ РЕСУРСОВ: ${recipe.covered}/${selected.length} · ДОПОЛНИТЕЛЬНЫХ: ${recipe.extra}</p>
    <div class="recipe-ingredient-list">${recipe.ingredients.map(ing=>{
     const resource=items[ing.id]||{name:ing.id,image:''},wanted=selectedSet.has(ing.id);
-    return `<div class="recipe-ingredient ${wanted?'wanted':''}">${validImage(resource.image)?`<img loading="lazy" src="${esc(resource.image)}" alt="">`:'<span class="ingredient-fallback">◇</span>'}<span><b>${esc(resource.name)}</b><small>${esc(resource.nameRu||'')}</small></span><strong>×${ing.qty}</strong>${wanted?'<span class="wanted-eye">👁</span>':''}</div>`;
+    return `<div class="recipe-ingredient ${wanted?'wanted':''}">${validImage(resource.image)?`<img loading="lazy" src="${esc(resource.image)}" alt="">`:'<span class="ingredient-fallback">◇</span>'}<span><b>${esc(resource.name)}</b><small>${esc(resource.nameRu||'')}</small></span>${wanted?'<span class="wanted-eye">👁</span>':''}</div>`;
    }).join('')}</div>
   </article>`;
  }).join('')||'<p class="hint">Для выбранных ресурсов рецептов не найдено.</p>';
@@ -234,7 +234,12 @@ function setLogin(messageText=''){$('loginOverlay').hidden=false;$('loginMessage
 async function initialize(){restore();renderAll();renderCatalog();demoLogin();
  if(!configured){setStatus('Гость · локальный режим');return}
  try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
-  onAuthStateChanged(auth,async u=>{if(u&&allowCloudLogin&&!loginSubmitting&&mode!=='cloud'){demoChosen=false;await startCloud(u)}else if(!u&&mode==='cloud'){allowCloudLogin=false;demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
+  await setPersistence(auth,browserLocalPersistence);
+  onAuthStateChanged(auth,async u=>{
+    if(u&&!loginSubmitting&&(mode!=='cloud'||user?.uid!==u.uid)){
+      allowCloudLogin=true;demoChosen=false;await startCloud(u);
+    }else if(!u&&mode==='cloud'){allowCloudLogin=false;demoLogin()}
+  },err=>setStatus('Гость · Firebase: '+message(err)));
  }catch(err){setStatus('Гость · Firebase: '+message(err))}
 }
 $('loginOpen').addEventListener('click',()=>setLogin());
@@ -270,6 +275,7 @@ $('loginForm').addEventListener('submit',async e=>{
  try{
   allowCloudLogin=true;
   const email=$('loginEmail').value.trim(),pass=$('loginPassword').value;
+  await setPersistence(auth,browserLocalPersistence);
   const result=registerMode?await createUserWithEmailAndPassword(auth,email,pass):await signInWithEmailAndPassword(auth,email,pass);
   demoChosen=false;
   $('loginPassword').value='';
@@ -562,8 +568,11 @@ function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){
  const selected=$('catalogKind').value||'all';
  $('catalogKindIcons').innerHTML=STASH_CATEGORIES.map(c=>`<button type="button" class="${selected===c[0]?'active':''}" data-kind="${esc(c[0])}" title="${esc(c[1])}" aria-label="${esc(c[1])}" aria-pressed="${selected===c[0]}"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${c[2]}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="kind-fallback" hidden>${esc(c[3])}</span></button>`).join('');
- const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value;
+ const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value,kind=$('catalogKind').value,sort=$('catalogSort').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(kind==='all'||stashKind(x)===kind)&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
+ if(sort==='rarity'){const rank={common:1,uncommon:2,rare:3,epic:4,legendary:5,amplified:6};arr.sort((a,b)=>(rank[String(b.rarity||'').toLowerCase()]||0)-(rank[String(a.rarity||'').toLowerCase()]||0)||a.name.localeCompare(b.name));}
+ else if(sort==='name')arr.sort((a,b)=>a.name.localeCompare(b.name,'en'));
+ else if(sort==='value')arr.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0)||a.name.localeCompare(b.name));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
  $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" title="Открыть веб-страницу MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">ⅈ</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
@@ -652,6 +661,7 @@ $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
 $('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
 $('catalogKind').addEventListener('change',renderCatalog);
+$('catalogSort').addEventListener('change',()=>{shown=80;renderCatalog()});
 $('catalogKindIcons').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(!b)return;$('catalogKind').value=b.dataset.kind;shown=80;renderCatalog()});
 $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
