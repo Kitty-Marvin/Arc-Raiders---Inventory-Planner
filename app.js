@@ -234,11 +234,11 @@ function blueprintArtwork(item){
 }
 // STASH visual filter: leaves saved slots and their indices unchanged.
 const STASH_CATEGORIES=[
- ['all','ВСЁ','Icon_AllItems.png','▦'],['other','ПРОЧЕЕ','Icon_Misc.png','◎'],['shield','ЩИТЫ','Icon_Shield.png','⬡'],
+ ['all','ВСЁ','Icon_AllItems.png','▦'],['material','МАТЕРИАЛЫ','Icon_Material.png','◉'],['shield','ЩИТЫ','Icon_Shield.png','⬡'],
  ['weapon','ОРУЖИЕ','Icon_Weapon.png','⌁'],
  ['ammo','ПАТРОНЫ','Icon_Ammo.png','▥'],['quick','РАСХОДНИКИ','Icon_QuickUse.png','✚'],
  ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],['key','КЛЮЧИ','Icon_Key.png','⚿'],
- ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤']];
+ ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤'],['other','ПРОЧЕЕ','Icon_Misc.png','⬡']];
 let stashFilter='all',stashSort='type';
 function stashKind(item){
  const cat=String(item?.category||'').toLowerCase(),name=String(item?.name||'').toLowerCase();
