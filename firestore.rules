@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Inventories are private to the Firebase Authentication account.
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validPayload() {
+      return request.resource.data.keys().hasOnly(['revision','state','builds','updatedAt'])
+        && request.resource.data.keys().hasAll(['revision','state','builds','updatedAt'])
+        && request.resource.data.revision is int
+        && request.resource.data.state is map
+        && request.resource.data.state.capacity is int
+        && request.resource.data.state.capacity >= 1
+        && request.resource.data.state.capacity <= 120
+        && request.resource.data.state.columns is int
+        && request.resource.data.state.slots is list
+        && request.resource.data.state.slots.size() == request.resource.data.state.capacity
+        && request.resource.data.builds is list
+        && request.resource.data.builds.size() <= 30
+        && request.resource.data.updatedAt is string;
+    }
+
+    match /users/{userId}/planner/{documentId} {
+      allow read: if isOwner(userId) && documentId == 'main';
+      allow create: if isOwner(userId) && documentId == 'main'
+        && validPayload() && request.resource.data.revision == 1;
+      allow update: if isOwner(userId) && documentId == 'main'
+        && validPayload()
+        && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
