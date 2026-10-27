@@ -48,6 +48,7 @@ const demoItems = [
 const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
+const activePlanNames={stash:null,raid:null};
 let allowCloudLogin=false,loginSubmitting=false;let resourcesOpen=false,resourceData=null,resourceSelection=new Set();
 const RESOURCE_RECENT_KEY='raiders-recent-resources-v1';
 let recentResourceIds=[];
@@ -218,12 +219,12 @@ function message(err){const code=err?.code||''; const messages={
  return messages[code]||err?.message||'Неизвестная ошибка';
 }
 function toast(s){const t=$('toast');t.textContent=s;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.hidden=true,4500)}
-function persist(){saveLocal();if(!ready)return;
+function persist(){saveLocal();updatePlanControls();if(!ready)return;
  if(mode==='demo'){setStatus('Демо · сохранено только в браузере');return}
  if(mode!=='cloud'||halted)return;
  dirty++;setStatus('Сохраняется в Firebase…');clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,650);
 }
-function applyRemote(payload,rev,announce=false){state=normState(payload.state,area);builds=normBuilds(payload.builds,area);rememberArea();remoteRevision=rev;dirty=0;saved=0;halted=false;pendingRemote=false;saveLocal();renderAll();setStatus('Синхронизировано · версия '+rev);if(announce)toast('Получены изменения с другого компьютера')}
+function applyRemote(payload,rev,announce=false){activePlanNames[area]=null;state=normState(payload.state,area);builds=normBuilds(payload.builds,area);rememberArea();remoteRevision=rev;dirty=0;saved=0;halted=false;pendingRemote=false;saveLocal();renderAll();setStatus('Синхронизировано · версия '+rev);if(announce)toast('Получены изменения с другого компьютера')}
 function stopCloud(){sessionToken++;if(unsubscribe){unsubscribe();unsubscribe=null}clearTimeout(saveTimer);ready=false;workspace=null;user=null;saveBusy=false;halted=false;dirty=0;saved=0;pendingRemote=false}
 async function startCloud(u){stopCloud();const epoch=sessionToken;user=u;mode='cloud';setStatus('Загрузка облачных данных…');$('loginOverlay').hidden=true;$('logoutBtn').hidden=false;
  $('loginOpen').hidden=true;workspace=doc(db,'users',u.uid,'planner',area==='stash'?'stash':'main');
@@ -615,7 +616,25 @@ $('raidLayout').addEventListener('dragover',e=>{if(e.target.closest('[data-ref],
 $('raidLayout').addEventListener('drop',e=>{const b=e.target.closest('[data-ref],#augmentSelector');if(!b)return;e.preventDefault();let data;try{data=JSON.parse(e.dataTransfer.getData('text/plain'))}catch{return}const ref=b.id==='augmentSelector'?'augment':b.dataset.ref;
  selectedGearRef='';closeGearDropdown();if(data.kind==='catalog')putCatalogRef(data.id,ref);else if(data.kind==='slot')moveRef('bag:'+data.from,ref);else if(data.kind==='ref')moveRef(data.from,ref);
 });
-function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>'}
+function planSnapshot(b){return JSON.stringify({capacity:b.capacity,columns:b.columns,slots:b.slots.map(normSlot),...(area==='raid'?{raidGear:normalizeGear(b.raidGear)}:{})})}
+function changedPlan(){
+ const plan=builds.find(b=>b.name===activePlanNames[area]);
+ return Boolean(plan&&JSON.stringify(serializeState())!==planSnapshot(plan));
+}
+function updatePlanControls(){
+ const exists=builds.some(b=>b.name===activePlanNames[area]);
+ $('activePlanLabel').hidden=!exists;
+ $('saveChanges').hidden=!exists||!changedPlan();
+ if(exists)$('activePlanLabel').textContent='Открыт план: '+activePlanNames[area];
+}
+function saveExistingPlanChanges(){
+ const name=activePlanNames[area],i=builds.findIndex(b=>b.name===name);
+ if(!name||i<0)return toast('Сначала открой сохранённый план');
+ if(!changedPlan())return updatePlanControls();
+ builds[i]={...builds[i],...serializeState()};
+ persist();renderSaves();toast('Сохранены изменения: '+name);
+}
+function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
 function renderAreaUi(){
  const stash=area==='stash';
  const plansPanel=$('plansPanel');
@@ -663,10 +682,27 @@ function categories(){
  $('catalogKind').innerHTML=STASH_CATEGORIES.map(c=>`<option value="${esc(c[0])}">${esc(c[1])} ${esc(c[3])}</option>`).join('');
  $('catalogKind').value=STASH_CATEGORIES.some(x=>x[0]===selectedKind)?selectedKind:'all';
  const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
+function enrichAmplifiedNames(items){
+ const bases=new Map();
+ for(const item of items){
+  if(!item.nameRu)continue;
+  const tier=item.name.match(/^(.+?) (?:I|II|III|IV)$/);
+  if(tier){
+   const ru=item.nameRu.replace(/ (?:I|II|III|IV)$/,'').trim();
+   if(/[А-Яа-яЁё]/.test(ru))bases.set(tier[1].toLowerCase(),ru);
+  }
+ }
+ for(const item of items){
+  if(item.nameRu||!/^Amplified /i.test(item.name))continue;
+  const match=item.name.match(/^Amplified (.+?)(?: \((.+)\))?$/i);
+  if(match)item.nameRu='Усиленное оружие: '+(bases.get(match[1].toLowerCase())||match[1])+(match[2]?' ('+match[2]+')':'');
+ }
+ return items;
+}
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
   if(!Array.isArray(data.items)||!data.items.length)throw new Error('Каталог ещё не загружен. В GitHub → Actions запустите «Update ARC items catalog».');
-  catalog=data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image),rarity:isBlueprint(x)?'':String(x.rarity||'')}));
+  catalog=enrichAmplifiedNames(data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image),rarity:isBlueprint(x)?'':String(x.rarity||'')})));
   shown=80;categories();renderCatalog();syncCatalogMetadata();st.className='catalogstatus ok';st.textContent=`${catalog.length} предметов · ${source==='metaforge'?'MetaForge':'ARDB'} · обновлён ${data.updatedAt||'вручную'}`;
  }catch(err){if(source!==$('source').value)return;catalog=demoItems;shown=80;categories();renderCatalog();st.className='catalogstatus fail';st.textContent='Демонстрационный каталог (8 предметов). '+err.message}
  finally{$('refreshBtn').disabled=false}
@@ -699,8 +735,8 @@ function closeEditor(){editingIndex=null;$('editOverlay').hidden=true}
 function validQty(){const item=typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex];return Math.max(1,Math.min(item?.stackMax||9999,parseInt($('editQty').value)||1))}
 function applyQty(){if(editingIndex===null)return;(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]).qty=validQty();persist();renderGrid();renderRaid();closeEditor()}
 function saveBuild(){const name=$('buildName').value.trim()||'Сборка '+new Date().toLocaleString('ru-RU');if(builds.find(b=>b.name===name)?.shareId)return toast('Перед заменой опубликованной сборки отзовите её ссылку.');if(builds.some(b=>b.name===name)&&!confirm('Заменить сборку с этим именем?'))return;
- builds=builds.filter(b=>b.name!==name);builds.unshift({name,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});builds=builds.slice(0,30);persist();$('buildName').value='';renderSaves();toast('Сборка сохранена: '+name)}
-function applySaved(x){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');state=normState(x);closeEditor();persist();renderAll()}
+ builds=builds.filter(b=>b.name!==name);builds.unshift({name,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});builds=builds.slice(0,30);activePlanNames[area]=name;persist();$('buildName').value='';renderSaves();toast('Сборка сохранена: '+name)}
+function applySaved(x,name=null){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');activePlanNames[area]=name;state=normState(x);closeEditor();persist();renderAll()}
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('columns').addEventListener('change',e=>{state.columns=Number(e.target.value);persist();renderGrid()});$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-capacity]');if(b)updateCapacity(b.dataset.capacity)});
 $('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
@@ -790,14 +826,15 @@ $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.k
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
 $('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
+$('saveChanges').addEventListener('click',saveExistingPlanChanges);
 $('savedList').addEventListener('click',async e=>{
  const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]');
  if(share){await publishBuild(Number(share.dataset.share))}
  else if(revoke){const b=builds[Number(revoke.dataset.revoke)];if(b&&confirm('Отозвать публичную ссылку на «'+b.name+'»? Друг больше не сможет открыть её.'))await revokeBuild(b)}
  else if(del){const i=Number(del.dataset.delete),b=builds[i];if(!b||!confirm('Удалить сборку «'+b.name+'»?'))return;
   if(b.shareId&&!(await revokeBuild(b,true)))return;
-  const index=builds.indexOf(b);if(index>=0){builds.splice(index,1);persist();renderSaves()}
- }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;applySaved(b);toast('Открыта сборка: '+b.name)}
+  const index=builds.indexOf(b);if(index>=0){builds.splice(index,1);if(activePlanNames[area]===b.name)activePlanNames[area]=null;persist();renderSaves()}
+ }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;applySaved(b,b.name);toast('Открыта сборка: '+b.name)}
 });
 $('exportBtn').addEventListener('click',()=>downloadJSON({version:1,area,capacity:state.capacity,columns:state.columns,slots:state.slots},area==='stash'?'arc-stash.json':'arc-raid.json'));
 $('exportAllBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
