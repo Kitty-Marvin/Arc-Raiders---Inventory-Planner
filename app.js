@@ -9,6 +9,35 @@ const KEY = 'arc-planner-v1', BUILDS_KEY = 'arc-planner-builds-v1';
 const STASH_KEY = 'arc-planner-stash-v5', STASH_BUILDS_KEY = 'arc-planner-stash-builds-v5';
 const RAID_KEY = 'arc-planner-raid-v5', RAID_BUILDS_KEY = 'arc-planner-raid-builds-v5';
 const STASH_MAX = 600, RAID_MAX = 120;
+// Augment statistics from arcraiders.wiki/wiki/Augments (verified Oct 2026).
+// Special category slots are additional to backpack, Quick Use and Safe Pocket.
+const AUGMENTS = [
+  ['free','Free Loadout Augment',14,4,0,35,['Light'],null,0],
+  ['looting1','Looting Mk. 1',18,4,1,50,['Light'],null,0],
+  ['combat1','Combat Mk. 1',16,4,1,45,['Light','Medium'],null,0],
+  ['tactical1','Tactical Mk. 1',15,5,1,40,['Light','Medium'],null,0],
+  ['looting2','Looting Mk. 2',22,4,2,60,['Light'],'Trinket',3],
+  ['combat2','Combat Mk. 2',18,4,1,55,['Light','Medium','Heavy'],'Grenade',1],
+  ['tactical2','Tactical Mk. 2',17,5,1,45,['Light','Medium'],'Utility',1],
+  ['looting3c','Looting Mk. 3 (Cautious)',24,5,2,70,['Light'],null,0,'Binoculars'],
+  ['looting3s','Looting Mk. 3 (Survivor)',20,5,3,80,['Light','Medium'],'Utility',1],
+  ['looting3sk','Looting Mk. 3 (Safekeeper)',18,4,1,65,['Light','Medium','Heavy'],'Trinket',2],
+  ['combat3a','Combat Mk. 3 (Aggressive)',18,4,1,65,['Light','Medium','Heavy'],'Grenade',2],
+  ['combat3f','Combat Mk. 3 (Flanking)',20,5,2,60,['Light'],'Utility',3],
+  ['tactical3d','Tactical Mk. 3 (Defensive)',20,5,1,60,['Light','Medium','Heavy'],null,0,'Shield Recharger'],
+  ['tactical3h','Tactical Mk. 3 (Healing)',16,4,3,55,['Light','Medium'],'Healing',3],
+  ['tactical3r','Tactical Mk. 3 (Revival)',16,5,2,65,['Light'],null,0,'Defibrillator'],
+  ['tactical3s','Tactical Mk. 3 (Smoke)',19,5,2,50,['Light','Medium'],'Utility',2]
+].map(([id,name,backpack,quick,safe,weight,shields,extraType,extraCount,integrated])=>({id,name,backpack,quick,safe,weight,shields,extraType,extraCount,integrated:integrated||''}));
+const augmentById=id=>AUGMENTS.find(x=>x.id===id)||AUGMENTS[1];
+const createGear=(id='looting1')=>{const a=augmentById(id);return {augmentId:a.id,shield:null,weapons:[null,null],quick:Array(a.quick).fill(null),safe:Array(a.safe).fill(null),augmented:Array(a.extraCount).fill(null),overflow:[]}};
+function normalizeGear(x,legacyExtra=[]){
+ const a=augmentById(x?.augmentId),base=createGear(a.id),overflow=Array.isArray(x?.overflow)?x.overflow.map(normSlot).filter(Boolean).slice(0,350):[];
+ const fit=(source,count)=>{const xs=Array.isArray(source)?source.map(normSlot):[];overflow.push(...xs.slice(count).filter(Boolean));return Array.from({length:count},(_,i)=>xs[i]||null)};
+ base.shield=normSlot(x?.shield);base.weapons=fit(x?.weapons,2);base.quick=fit(x?.quick,a.quick);base.safe=fit(x?.safe,a.safe);base.augmented=fit(x?.augmented,a.extraCount);
+ base.overflow=[...overflow,...legacyExtra.map(normSlot).filter(Boolean)].slice(0,350);return base;
+}
+
 let area='stash';
 
 const demoItems = [
@@ -16,7 +45,7 @@ const demoItems = [
   ['Headphones','Trinket'], ['Leaper Pulse Unit','ARC'], ['Light Shield','Shield'],
   ['Ferro IV','Weapon'], ['Heavy Gun Parts','Material']
 ].map(([name,category],i)=>({id:`demo:${i}`,name,nameRu:'',category,rarity:'',image:'',source:'demo',stackMax:0,value:0}));
-const initial = (which='stash')=>{const capacity=which==='stash'?64:24;return {capacity,columns:which==='stash'?10:6,slots:Array(capacity).fill(null),selectedSlot:null}};
+const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
@@ -29,11 +58,23 @@ function validImage(u){return typeof u==='string' && /^https:\/\/[^\s"'<>]+$/i.t
 function normSlot(s){if(!s||typeof s!=='object'||typeof s.name!=='string')return null;
   return {id:String(s.id||s.name).slice(0,150),name:s.name.slice(0,180),nameRu:String(s.nameRu||'').slice(0,180),image:validImage(s.image).slice(0,700),category:String(s.category||'').slice(0,100),rarity:String(s.rarity||'').slice(0,60),stackMax:Math.max(0,Math.min(9999,Number(s.stackMax)||0)),value:Number(s.value)||0,source:String(s.source||'').slice(0,30),qty:Math.max(1,Math.min(9999,parseInt(s.qty)||1))};
 }
-function normState(raw,which=area){const max=which==='stash'?STASH_MAX:RAID_MAX;const cap=Math.max(1,Math.min(max,parseInt(raw?.capacity)||initial(which).capacity)),cols=Math.max(4,Math.min(12,parseInt(raw?.columns)||initial(which).columns));
+function normState(raw,which=area){
+ if(which==='raid'){
+  const gear=normalizeGear(raw?.raidGear);
+  const a=augmentById(gear.augmentId);
+  const source=Array.isArray(raw?.slots)?raw.slots.map(normSlot):[];
+  const previous=Number(raw?.capacity)||source.length;
+  // v5 was a flat configurable grid. Excess stacks are never silently deleted.
+  const overflow=source.slice(a.backpack).filter(Boolean);
+  if(overflow.length)gear.overflow.push(...overflow);
+  return {capacity:a.backpack,columns:4,slots:Array.from({length:a.backpack},(_,i)=>source[i]||null),selectedSlot:null,raidGear:gear};
+ }
+ const cap=Math.max(1,Math.min(STASH_MAX,parseInt(raw?.capacity)||initial(which).capacity)),cols=Math.max(4,Math.min(12,parseInt(raw?.columns)||initial(which).columns));
  const slots=Array.isArray(raw?.slots)?raw.slots.slice(0,cap).map(normSlot):[];while(slots.length<cap)slots.push(null);
  return {capacity:cap,columns:cols,slots,selectedSlot:null};
 }
 function normBuilds(arr,which=area){return Array.isArray(arr)?arr.filter(b=>b&&typeof b.name==='string'&&Array.isArray(b.slots)).slice(0,30).map(b=>({...normState(b,which),name:b.name.slice(0,60),created:String(b.created||''),...(typeof b.shareId==='string'&&/^[a-f0-9]{32}$/.test(b.shareId)?{shareId:b.shareId}:{})})):[]}
+function serializeState(){return {capacity:state.capacity,columns:state.columns,slots:state.slots.map(normSlot),...(area==='raid'?{raidGear:normalizeGear(state.raidGear)}:{})}}
 function rememberArea(){cache[area]={state:normState(state,area),builds:normBuilds(builds,area)}}
 function loadArea(){state=normState(cache[area].state,area);builds=normBuilds(cache[area].builds,area)}
 function restore(){
@@ -46,7 +87,7 @@ function restore(){
  loadArea();
 }
 function saveLocal(){rememberArea();if(mode==='cloud')return;
- try{localStorage.setItem(area==='stash'?STASH_KEY:RAID_KEY,JSON.stringify({capacity:state.capacity,columns:state.columns,slots:state.slots}));localStorage.setItem(area==='stash'?STASH_BUILDS_KEY:RAID_BUILDS_KEY,JSON.stringify(builds))}catch{}
+ try{localStorage.setItem(area==='stash'?STASH_KEY:RAID_KEY,JSON.stringify(serializeState()));localStorage.setItem(area==='stash'?STASH_BUILDS_KEY:RAID_BUILDS_KEY,JSON.stringify(builds))}catch{}
 }
 async function switchArea(next){
  if(!['stash','raid'].includes(next)||next===area)return true;
@@ -111,7 +152,7 @@ class ConflictError extends Error { constructor(){super('CONFLICT');this.code='C
 async function saveCloud(){clearTimeout(saveTimer);if(mode!=='cloud'||!ready||saveBusy||halted||saved===dirty)return;
  saveBusy=true;const epoch=sessionToken;
  try{while(dirty>saved&&!halted&&epoch===sessionToken){
-  const target=dirty;const payload={state:{capacity:state.capacity,columns:state.columns,slots:state.slots.map(normSlot)},builds:normBuilds(builds)};
+  const target=dirty;const payload={state:serializeState(),builds:normBuilds(builds)};
   const bytes=new Blob([JSON.stringify(payload)]).size;
   if(bytes>800000){halted=true;setStatus('Превышен лимит размера сборок · экспортируйте JSON');toast('Слишком много сохранённых сборок. Удалите ненужные или уменьшите размер изображений.');return}
   const expected=remoteRevision;
@@ -134,7 +175,7 @@ async function saveCloud(){clearTimeout(saveTimer);if(mode!=='cloud'||!ready||sa
 }
 async function refreshCloud(){if(mode==='demo'){toast('Демо работает только в этом браузере');return}
  if(!ready||!workspace)return toast('Нужно войти');
- if(dirty>saved){if(!confirm('Есть несохранённые изменения. Скачать их резервную копию JSON и загрузить облачную версию?'))return;downloadJSON({version:2,state:{capacity:state.capacity,columns:state.columns,slots:state.slots},builds},'arc-unsaved-backup.json');}
+ if(dirty>saved){if(!confirm('Есть несохранённые изменения. Скачать их резервную копию JSON и загрузить облачную версию?'))return;downloadJSON({version:2,state:serializeState(),builds},'arc-unsaved-backup.json');}
  try{const snap=await getDocFromServer(workspace);if(snap.exists())applyRemote(snap.data(),Number(snap.data().revision)||0,true);else{applyRemote({state:initial(area),builds:[]},0);}
  }catch(err){toast('Не удалось загрузить: '+message(err))}
 }
@@ -173,25 +214,121 @@ window.addEventListener('online',()=>{if(mode==='cloud'&&ready&&!halted&&dirty>s
 window.addEventListener('beforeunload',e=>{if(mode==='cloud'&&ready&&dirty>saved){e.preventDefault();e.returnValue=''}});
 
 function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button class="slot ${s?'filled':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>')+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
- const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0);$('capacity').value=state.capacity;$('columns').value=state.columns;
+ const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
 }
+
+// ----- Dynamic game-style LOADOUTS -----
+function catalogAugment(a){return catalog.find(x=>canonicalAugment(x.name)?.id===a.id)}
+function canonicalAugment(name){if(!name)return null;const n=String(name).toLowerCase().replace(/[^a-z0-9]/g,'');return AUGMENTS.find(a=>a.name.toLowerCase().replace(/[^a-z0-9]/g,'')===n)||null}
+function getRef(ref){
+ const [kind,ix]=ref.split(':');const i=Number(ix);if(kind==='bag')return state.slots[i];const g=state.raidGear;
+ if(kind==='shield')return g.shield;if(kind==='weapon')return g.weapons[i];if(kind==='quick')return g.quick[i];if(kind==='safe')return g.safe[i];if(kind==='aug')return g.augmented[i];if(kind==='overflow')return g.overflow[i];return null;
+}
+function putRef(ref,item){const [kind,ix]=ref.split(':'),i=Number(ix),g=state.raidGear;
+ if(kind==='bag')state.slots[i]=item;else if(kind==='shield')g.shield=item;
+ else if(kind==='weapon')g.weapons[i]=item;else if(kind==='quick')g.quick[i]=item;else if(kind==='safe')g.safe[i]=item;
+ else if(kind==='aug')g.augmented[i]=item;else if(kind==='overflow')g.overflow[i]=item;
+}
+function compactOverflow(){state.raidGear.overflow=state.raidGear.overflow.filter(Boolean)}
+function layoutAugment(id){
+ if(area!=='raid')return;
+ const a=augmentById(id);if(a.id===state.raidGear.augmentId)return;
+ const old=state.raidGear,carry=[...old.overflow];
+ const resize=(arr,n)=>{carry.push(...arr.slice(n).filter(Boolean));return Array.from({length:n},(_,i)=>arr[i]||null)};
+ const slots=resize(state.slots,a.backpack);
+ const quick=resize(old.quick,a.quick),safe=resize(old.safe,a.safe),augmented=(augmentById(old.augmentId).extraType===a.extraType?resize(old.augmented,a.extraCount):(carry.push(...old.augmented.filter(Boolean)),Array(a.extraCount).fill(null)));
+ const dropped=carry.length-old.overflow.length;
+ state={...state,capacity:a.backpack,columns:4,slots,selectedSlot:null,raidGear:{augmentId:a.id,shield:old.shield,weapons:old.weapons,quick,safe,augmented,overflow:carry}};
+ persist();renderAll();toast(`Выбран ${a.name}. ${dropped?'Неразмещённые предметы сохранены отдельно: '+dropped:'Структура ячеек обновлена.'}`);
+}
+function matchSlot(item,ref){const [kind,index]=ref.split(':');let n=(item?.name||'').toLowerCase(),c=(item?.category||'').toLowerCase();
+ if(kind==='shield')return /shield|щит/i.test(n+' '+c);
+ if(kind==='weapon')return /weapon|rifle|pistol|shotgun|launcher|gun|оруж/i.test(c) || /ferro|anvil|stitcher|venator|bettina|torrente|renegade/i.test(n);
+ if(kind==='quick')return /grenade|medical|healing|heal|consum|utility|gadget|deploy|trap|шприц|гранат|лечени|применени/i.test(n+' '+c);
+ if(kind==='aug'){
+  const type=augmentById(state.raidGear.augmentId).extraType;
+  if(type==='Trinket')return /trinket|valuable|treasure|ценност|безделуш/i.test(c);
+  if(type==='Grenade')return /grenade|гранат/i.test(n+' '+c);
+  if(type==='Healing')return /heal|medical|bandage|med|лечен|бинт/i.test(n+' '+c);
+  if(type==='Utility')return /utility|deployable|gadget|trap|device|усилител|устройств/i.test(n+' '+c);
+ }
+ return true;
+}
+function slotMarkup(ref,label='',gear=false){const item=getRef(ref),sh=ref.startsWith('shield')&&item?(['Light','Medium','Heavy'].find(t=>new RegExp(t,'i').test(item.name))||''):'';const wrong=item&&(!matchSlot(item,ref)||(sh&&!augmentById(state.raidGear.augmentId).shields.includes(sh)));
+ return `<button type="button" class="raid-special ${gear?'gearslot':''} ${wrong?'incompatible':''}" data-ref="${esc(ref)}" draggable="${item?'true':'false'}" title="${esc(wrong?'Не соответствует игровому типу слота · ':'')}${esc(item?.name||label)}"><span class="slotnum">${esc(label)}</span>${item?(item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:'<span class="empty-plus">◆</span>')+`<span class="name">${esc(item.nameRu||item.name)}</span><span class="qty">${item.qty}</span>`:'<span class="empty-plus">+</span>'}${wrong?'<span class="kind pillwarning">НЕ СООТВЕТСТВУЕТ</span>':''}</button>`;
+}
+function renderRaid(){if(area!=='raid')return;const a=augmentById(state.raidGear.augmentId),g=state.raidGear,chosen=catalogAugment(a);
+ $('augmentSelector').innerHTML=(chosen?.image?`<img src="${esc(chosen.image)}" alt="" style="width:34px;height:34px;object-fit:contain;vertical-align:middle;margin-right:9px">`:'')+esc(a.name)+' ▾';
+ $('augmentDetails').textContent=`BACKPACK ${a.backpack} · QUICK USE ${a.quick} · SAFE POCKET ${a.safe} · AUGMENTED ${a.extraCount}${a.extraType?' ('+a.extraType+')':''} · Shield: ${a.shields.join('/')} ${a.integrated?' · '+a.integrated:''}`;
+ $('raidWeight').textContent=`LIMIT ${a.weight} KG`;
+ $('raidGear').innerHTML=slotMarkup('shield:0','SHIELD',true)+slotMarkup('weapon:0','WEAPON 1',true)+slotMarkup('weapon:1','WEAPON 2',true);
+ $('raidQuick').innerHTML=g.quick.map((_,i)=>slotMarkup('quick:'+i,'QUICK '+(i+1))).join('');
+ $('raidSafe').innerHTML=g.safe.map((_,i)=>slotMarkup('safe:'+i,'SAFE '+(i+1))).join('')||'<span class="hint">Нет защищённых карманов</span>';
+ $('raidAugmented').innerHTML=g.augmented.map((_,i)=>slotMarkup('aug:'+i,(a.extraType||'BONUS').toUpperCase()+' '+(i+1))).join('') || (a.integrated?`<span class="hint">Встроено: ${esc(a.integrated)} (не занимает ячейку)</span>`:'<span class="hint">Нет специальных ячеек</span>');
+ $('raidOverflowBox').hidden=!g.overflow.length;
+ $('raidOverflow').innerHTML=g.overflow.map((_,i)=>slotMarkup('overflow:'+i,'+'+(i+1))).join('');
+ $('raidOverflowCount').textContent=g.overflow.length;
+ $('raidQuickCount').textContent=g.quick.filter(Boolean).length+'/'+a.quick;
+ $('raidSafeCount').textContent=g.safe.filter(Boolean).length+'/'+a.safe;
+ $('raidBagCount').textContent=state.slots.filter(Boolean).length+'/'+a.backpack;
+ $('raidExtraTitle').textContent='AUGMENTED SLOTS '+(a.extraType?'· '+a.extraType.toUpperCase():'')+' '+g.augmented.filter(Boolean).length+'/'+a.extraCount;
+}
+let pickerRef='';
+function pickerOpen(ref){if(area!=='raid')return;pickerRef=ref;$('pickerSearch').value='';$('pickerTitle').textContent=ref==='augment'?'AUGMENT · Выбор рюкзака':ref.startsWith('shield')?'SHIELD · Выбор щита':ref.startsWith('weapon')?'WEAPON · Выбор оружия':ref.startsWith('quick')?'QUICK USE · Выбор предмета':ref.startsWith('safe')?'SAFE POCKET · Выбор предмета':ref.startsWith('aug')?'AUGMENTED SLOTS · '+augmentById(state.raidGear.augmentId).extraType:'Выбор предмета';
+ $('pickerHint').textContent='Список фильтруется по типу ячейки. Перетаскиванием можно вручную разместить любой предмет.';
+ $('pickerRemove').hidden=ref==='augment'||!getRef(ref);$('pickerEdit').hidden=ref==='augment'||!getRef(ref);$('pickerOverlay').hidden=false;renderPicker();$('pickerSearch').focus();
+}
+function renderPicker(){const q=$('pickerSearch').value.trim().toLowerCase();
+ if(pickerRef==='augment'){$('pickerResults').innerHTML=AUGMENTS.filter(a=>a.name.toLowerCase().includes(q)).map(a=>{const item=catalogAugment(a);return `<button class="pickeritem" data-pick-augment="${a.id}">${item?.image?`<img src="${esc(item.image)}" alt="">`:'<span style="font-size:28px">▣</span>'}<span><b>${esc(a.name)}</b><small>${a.backpack} BACKPACK · ${a.quick} QUICK · ${a.safe} SAFE · ${a.extraCount} BONUS</small></span></button>`}).join('');return}
+ const items=catalog.filter(x=>matchSlot(x,pickerRef)&&[x.name,x.nameRu,x.category].join(' ').toLowerCase().includes(q));
+ $('pickerResults').innerHTML=items.slice(0,130).map(x=>`<button class="pickeritem" data-pick-item="${esc(x.id)}">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span style="font-size:24px">▣</span>'}<span><b>${esc(x.nameRu||x.name)}</b><small>${esc(x.category)}</small></span></button>`).join('')||'<p class="hint">Подходящие предметы не найдены. Попробуй перетащить нужный предмет из каталога справа.</p>';
+}
+function closePicker(){$('pickerOverlay').hidden=true;pickerRef=''}
+function putCatalogRef(id,ref){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');
+ if(ref==='augment'){const a=canonicalAugment(item.name);if(a)layoutAugment(a.id);else toast('Этот предмет не является известным аугментом');return}
+ putRef(ref,normSlot({...item,qty:1}));compactOverflow();persist();renderAll();
+}
+function moveRef(from,to){if(from===to)return;if(from.startsWith('overflow')&&to.startsWith('overflow'))return;
+ const a=getRef(from),b=getRef(to);if(!a)return;
+ if(to==='augment'){const aug=canonicalAugment(a.name);if(aug){layoutAugment(aug.id)}else toast('На этот слот требуется аугмент');return}
+ putRef(to,a);putRef(from,b);compactOverflow();persist();renderAll();
+}
+$('augmentSelector').addEventListener('click',()=>pickerOpen('augment'));
+$('pickerSearch').addEventListener('input',renderPicker);
+$('pickerClose').addEventListener('click',closePicker);
+$('pickerOverlay').addEventListener('click',e=>{if(e.target.id==='pickerOverlay')closePicker()});
+$('pickerEdit').addEventListener('click',()=>{const ref=pickerRef;closePicker();if(getRef(ref))openEditor(ref)});
+$('pickerRemove').addEventListener('click',()=>{if(pickerRef==='augment')return;putRef(pickerRef,null);compactOverflow();persist();renderAll();closePicker()});
+$('pickerResults').addEventListener('click',e=>{const a=e.target.closest('[data-pick-augment]'),b=e.target.closest('[data-pick-item]');if(a)layoutAugment(a.dataset.pickAugment);else if(b)putCatalogRef(b.dataset.pickItem,pickerRef);if(a||b)closePicker()});
+$('raidLayout').addEventListener('click',e=>{const b=e.target.closest('[data-ref]');if(b)pickerOpen(b.dataset.ref)});
+$('raidLayout').addEventListener('dblclick',e=>{const b=e.target.closest('[data-ref]');if(b&&getRef(b.dataset.ref)){closePicker();openEditor(b.dataset.ref)}});
+$('raidLayout').addEventListener('dragstart',e=>{const b=e.target.closest('[data-ref]');if(b&&getRef(b.dataset.ref)){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'ref',from:b.dataset.ref}));e.dataTransfer.effectAllowed='move'}});
+$('raidLayout').addEventListener('dragover',e=>{if(e.target.closest('[data-ref],#augmentSelector'))e.preventDefault()});
+$('raidLayout').addEventListener('drop',e=>{const b=e.target.closest('[data-ref],#augmentSelector');if(!b)return;e.preventDefault();let data;try{data=JSON.parse(e.dataTransfer.getData('text/plain'))}catch{return}const ref=b.id==='augmentSelector'?'augment':b.dataset.ref;
+ if(data.kind==='catalog')putCatalogRef(data.id,ref);else if(data.kind==='slot')moveRef('bag:'+data.from,ref);else if(data.kind==='ref')moveRef(data.from,ref);
+});
 function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>'}
 function renderAreaUi(){
  const stash=area==='stash';
  $('areaStash').classList.toggle('active',stash);$('areaRaid').classList.toggle('active',!stash);
  $('areaStash').setAttribute('aria-selected',String(stash));$('areaRaid').setAttribute('aria-selected',String(!stash));
- $('workspaceTitle').textContent=stash?'МОЙ СКЛАД · STASH':'КОМПЛЕКТ ДЛЯ РЕЙДА';
+ $('workspaceTitle').textContent=stash?'МОЙ СКЛАД · STASH':'LOADOUTS';
  $('areaDescription').textContent=stash?'Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.':'Отдельный план снаряжения и предметов для выхода на поверхность. Не меняет склад.';
  $('plansTitle').textContent=stash?'02 / ПЛАНЫ СКЛАДА':'02 / РЕЙДОВЫЕ СБОРКИ';
  $('saveBuild').textContent=stash?'Сохранить план склада':'Сохранить сборку';
  $('buildName').placeholder=stash?'Название плана (например: Основной склад)':'Название сборки (например: Фарм Бастиона)';
  $('capacity').max=stash?STASH_MAX:RAID_MAX;
+ $('raidLayout').hidden=stash;$('stashGridHost').hidden=!stash;
+ (stash?$('stashGridHost'):$('raidBackpackHost')).appendChild($('inventory'));
+ $('capacity').disabled=!stash;$('columns').disabled=!stash;$('presets').hidden=!stash;
+ $('capacity').closest('.control').hidden=!stash;$('columns').closest('.control').hidden=!stash;$('presets').closest('.control').hidden=!stash;
+ $('gridHelp').textContent=stash?'Нажми пустую ячейку, затем предмет в каталоге. Перетаскивание и настройка количества доступны.':'Выбор AUGMENT перестраивает вместимость и специальные ячейки. Нажми на любой специальный слот для поиска или перетащи предмет. Излишки сохраняются в НЕ РАЗМЕЩЕНО.';
  const choices=stash?[64,88,112,136,160,184,208,232,256,280,304,328]:[12,16,18,20,24,30,36];
  $('presets').innerHTML=choices.map(n=>`<button class="small" data-capacity="${n}">${n}</button>`).join('');
  $('stashNote').hidden=!stash;
  $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';
 }
-function renderAll(){renderAreaUi();renderGrid();renderSaves()}
+function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
  const arr=catalog.filter(x=>(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.length;
@@ -208,15 +345,15 @@ async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus
  finally{$('refreshBtn').disabled=false}
 }
 function firstEmpty(){return state.slots.findIndex(s=>!s)}
-function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();toast('Добавлено: '+item.name)}
-function updateCapacity(input){const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!confirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
+function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
+function updateCapacity(input){if(area==='raid')return;const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!confirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
  state.slots=state.slots.slice(0,n);while(state.slots.length<n)state.slots.push(null);state.capacity=n;if(state.selectedSlot>=n)state.selectedSlot=null;persist();renderGrid()}
-function openEditor(i){const item=state.slots[i];if(!item)return;editingIndex=i;$('editTitle').textContent=item.nameRu||item.name;$('editImage').src=item.image||'';$('editImage').style.display=item.image?'block':'none';$('editInfo').textContent=(item.category||'Предмет')+(item.rarity?' · '+item.rarity:'');$('editQty').value=item.qty;$('editQty').max=item.stackMax||9999;$('stackHint').textContent=item.stackMax?'Максимальный стак по источнику: '+item.stackMax:'Размер стака не указан. Количество меняется вручную.';$('editOverlay').hidden=false;$('editQty').focus()}
+function openEditor(i){const item=typeof i==='string'?getRef(i):state.slots[i];if(!item)return;editingIndex=i;$('editTitle').textContent=item.nameRu||item.name;$('editImage').src=item.image||'';$('editImage').style.display=item.image?'block':'none';$('editInfo').textContent=(item.category||'Предмет')+(item.rarity?' · '+item.rarity:'');$('editQty').value=item.qty;$('editQty').max=item.stackMax||9999;$('stackHint').textContent=item.stackMax?'Максимальный стак по источнику: '+item.stackMax:'Размер стака не указан. Количество меняется вручную.';$('editOverlay').hidden=false;$('editQty').focus()}
 function closeEditor(){editingIndex=null;$('editOverlay').hidden=true}
-function validQty(){const item=state.slots[editingIndex];return Math.max(1,Math.min(item?.stackMax||9999,parseInt($('editQty').value)||1))}
-function applyQty(){if(editingIndex===null)return;state.slots[editingIndex].qty=validQty();persist();renderGrid();closeEditor()}
+function validQty(){const item=typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex];return Math.max(1,Math.min(item?.stackMax||9999,parseInt($('editQty').value)||1))}
+function applyQty(){if(editingIndex===null)return;(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]).qty=validQty();persist();renderGrid();renderRaid();closeEditor()}
 function saveBuild(){const name=$('buildName').value.trim()||'Сборка '+new Date().toLocaleString('ru-RU');if(builds.find(b=>b.name===name)?.shareId)return toast('Перед заменой опубликованной сборки отзовите её ссылку.');if(builds.some(b=>b.name===name)&&!confirm('Заменить сборку с этим именем?'))return;
- builds=builds.filter(b=>b.name!==name);builds.unshift({name,created:new Date().toISOString(),capacity:state.capacity,columns:state.columns,slots:JSON.parse(JSON.stringify(state.slots))});builds=builds.slice(0,30);persist();$('buildName').value='';renderSaves();toast('Сборка сохранена: '+name)}
+ builds=builds.filter(b=>b.name!==name);builds.unshift({name,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});builds=builds.slice(0,30);persist();$('buildName').value='';renderSaves();toast('Сборка сохранена: '+name)}
 function applySaved(x){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');state=normState(x);closeEditor();persist();renderAll()}
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('columns').addEventListener('change',e=>{state.columns=Number(e.target.value);persist();renderGrid()});$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-capacity]');if(b)updateCapacity(b.dataset.capacity)});
@@ -225,11 +362,11 @@ $('catalogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-it
 $('catalogGrid').addEventListener('dragstart',e=>{const b=e.target.closest('[data-item]');if(b){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'catalog',id:b.dataset.item}));e.dataTransfer.effectAllowed='copy'}});
 $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move'}});
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
-$('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
+$('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
 $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
-$('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;state.slots[editingIndex]=null;persist();renderGrid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...state.slots[editingIndex],qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
-$('clearBtn').addEventListener('click',()=>{if(state.slots.some(Boolean)&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить рейдовую сборку?')){state.slots=Array(state.capacity).fill(null);state.selectedSlot=null;persist();renderGrid()}});
+$('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
+$('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
 $('savedList').addEventListener('click',async e=>{
  const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]');
@@ -241,7 +378,7 @@ $('savedList').addEventListener('click',async e=>{
  }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;applySaved(b);toast('Открыта сборка: '+b.name)}
 });
 $('exportBtn').addEventListener('click',()=>downloadJSON({version:1,area,capacity:state.capacity,columns:state.columns,slots:state.slots},area==='stash'?'arc-stash.json':'arc-raid.json'));
-$('exportAllBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:{capacity:state.capacity,columns:state.columns,slots:state.slots},builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
+$('exportAllBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
 $('importBtn').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.area&&x.area!==area){toast('Этот JSON относится к разделу «'+(x.area==='stash'?'Склад':'Рейд')+'». Переключитесь в него и повторите импорт.');return}if(x.version===2&&x.state&&Array.isArray(x.builds)){if(!confirm('Заменить все сохранённые сборки из JSON?'))return;builds=normBuilds(x.builds);applySaved(x.state);toast('Все сборки импортированы')}else{applySaved(x);toast('Инвентарь импортирован')}}catch(err){toast('Ошибка импорта: '+err.message)}finally{e.target.value=''}});
 
 // --- Sharing only explicit snapshots. Every private workspace stays behind owner rules. ---
@@ -255,7 +392,7 @@ async function publishBuild(i){
  if(mode!=='cloud'||!user||!ready){toast('Для публикации сборки войдите в личный аккаунт. Демо-сборки доступны только на этом ПК.');return}
  if(b.shareId){revealShareLink(b.shareId);return}
  const id=crypto.randomUUID().replace(/-/g,'');
- const record={ownerUid:user.uid,name:b.name,area,build:{capacity:b.capacity,columns:b.columns,slots:b.slots.map(normSlot)},createdAt:new Date().toISOString()};
+ const record={ownerUid:user.uid,name:b.name,area,build:{capacity:b.capacity,columns:b.columns,slots:b.slots.map(normSlot),...(area==='raid'?{raidGear:normalizeGear(b.raidGear)}:{})},createdAt:new Date().toISOString()};
  try{
   if(new Blob([JSON.stringify(record)]).size>700000)throw new Error('Слишком большая сборка для публикации');
   await setDoc(doc(db,'sharedBuilds',id),record);
@@ -279,9 +416,14 @@ async function openIncomingShare(id){
   const record=snap.data();if(!record?.build||!record?.name)throw new Error('Неверный формат опубликованной сборки');
   const shareArea=record.area==='stash'?'stash':'raid';const build=normState(record.build,shareArea);sharedPreview={...build,area:shareArea,name:String(record.name).slice(0,60)};
   $('sharedTitle').textContent=sharedPreview.name;
-  $('sharedInfo').textContent=(shareArea==='stash'?'СКЛАД':'РЕЙДОВАЯ СБОРКА')+' · Ячеек: '+build.capacity+' · Предметов: '+build.slots.reduce((a,s)=>a+(s?.qty||0),0);$('importShared').textContent=shareArea==='stash'?'Скопировать в мой склад':'Скопировать в рейдовые сборки';
+  $('sharedInfo').textContent=(shareArea==='stash'?'СКЛАД':'РЕЙДОВАЯ СБОРКА '+augmentById(build.raidGear?.augmentId).name)+' · Ячеек: '+build.capacity+' · Предметов: '+build.slots.reduce((a,s)=>a+(s?.qty||0),0);$('importShared').textContent=shareArea==='stash'?'Скопировать в мой склад':'Скопировать в рейдовые сборки';
   $('sharedGrid').style.gridTemplateColumns='repeat('+Math.min(build.columns,8)+',minmax(0,1fr))';
   $('sharedGrid').innerHTML=build.slots.map(s=>`<div class="sharedslot">${s?(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none'">`:'')+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span>`:'<span class="muted">+</span>'}</div>`).join('');
+  if(shareArea==='raid'){
+   const g=build.raidGear;
+   const extra=[['SHIELD',g.shield],...g.weapons.map((x,i)=>['WEAPON '+(i+1),x]),...g.quick.map((x,i)=>['QUICK '+(i+1),x]),...g.safe.map((x,i)=>['SAFE '+(i+1),x]),...g.augmented.map((x,i)=>['BONUS '+(i+1),x])];
+   $('sharedGrid').insertAdjacentHTML('beforeend',extra.map(([label,s])=>`<div class="sharedslot" title="${esc(label)}"><small>${esc(label)}</small>${s?(s.image?`<img src="${esc(s.image)}" alt="">`:'')+`<span class="name">${esc(s.nameRu||s.name)}</span>`:'<span>+</span>'}</div>`).join(''));
+  }
   $('importShared').hidden=false;
  }catch(err){showShareStatus('Не удалось открыть сборку',message(err))}
 }

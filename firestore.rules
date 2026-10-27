@@ -47,7 +47,7 @@ service cloud.firestore {
         && request.resource.data.createdAt is string
         && (request.resource.data.get('area','raid') == 'stash' || request.resource.data.get('area','raid') == 'raid')
         && request.resource.data.build is map
-        && request.resource.data.build.keys().hasOnly(['capacity','columns','slots'])
+        && request.resource.data.build.keys().hasOnly(['capacity','columns','slots','raidGear'])
         && request.resource.data.build.keys().hasAll(['capacity','columns','slots'])
         && request.resource.data.build.capacity is int
         && request.resource.data.build.capacity >= 1
@@ -56,7 +56,8 @@ service cloud.firestore {
         && request.resource.data.build.columns >= 4
         && request.resource.data.build.columns <= 12
         && request.resource.data.build.slots is list
-        && request.resource.data.build.slots.size() == request.resource.data.build.capacity;
+        && request.resource.data.build.slots.size() == request.resource.data.build.capacity
+        && (!('raidGear' in request.resource.data.build) || request.resource.data.build.raidGear is map);
       allow update: if false;
       allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
     }
