@@ -656,7 +656,8 @@ function renderAreaUi(){
  const choices=stash?[64,88,112,136,160,184,208,232,256,280,304,328]:[12,16,18,20,24,30,36];
  $('presets').innerHTML=choices.map(n=>`<button class="small" data-capacity="${n}">${n}</button>`).join('');
  $('stashNote').hidden=!stash;
- $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';if(catalog.length)categories();renderCatalog();
+ $('exportPdf').hidden=!stash;
+  $('exportAllBtn').textContent=stash?'Экспорт планов склада':'Экспорт рейдовых сборок';if(catalog.length)categories();renderCatalog();
 }
 // Floating return-to-top button, shared by STASH and LOADOUTS.
 const backToTop=$('backToTop');
@@ -826,6 +827,19 @@ $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.k
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
 $('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
+$('saveAs').addEventListener('click',()=>{
+ const current=activePlanNames[area]||'Мой склад';
+ const name=window.prompt('Название новой копии плана:',current+' — копия');
+ if(name===null)return;
+ const trimmed=name.trim();
+ if(!trimmed)return toast('Укажите название нового плана');
+ if(trimmed.length>60)return toast('Название не может быть длиннее 60 символов');
+ if(builds.some(b=>b.name===trimmed))return toast('План с таким названием уже существует. Выбери другое.');
+ builds.unshift({name:trimmed,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});
+ builds=builds.slice(0,30);
+ activePlanNames[area]=trimmed;
+ persist();renderSaves();toast('Создана копия плана: '+trimmed);
+});
 $('saveChanges').addEventListener('click',saveExistingPlanChanges);
 $('savedList').addEventListener('click',async e=>{
  const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]');
@@ -836,6 +850,40 @@ $('savedList').addEventListener('click',async e=>{
   const index=builds.indexOf(b);if(index>=0){builds.splice(index,1);if(activePlanNames[area]===b.name)activePlanNames[area]=null;persist();renderSaves()}
  }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;applySaved(b,b.name);toast('Открыта сборка: '+b.name)}
 });
+
+function exportStashPDF(){
+ if(area!=='stash'){toast('PDF доступен для STASH');return}
+ const items=state.slots.map((item,index)=>({item,index})).filter(x=>x.item);
+ const columns=Math.max(4,Math.min(12,state.columns));
+ const title=(activePlanNames.stash||'STASH').replace(/[<>]/g,'');
+ const escapeHTML=esc;
+ const unique='item-'+Date.now().toString(36)+'-';
+ const cards=state.slots.map((item,i)=>{
+  const id=unique+i;
+  const isFilled=Boolean(item);
+  return '<a class="cell '+(isFilled?'filled':'empty')+'" '+(isFilled?'href="#'+id+'"':'')+' title="'+escapeHTML(item?.name||'Свободно')+'">'+
+   '<small>'+(i+1)+'</small>'+
+   (isFilled?(validImage(item.image)?'<img src="'+escapeHTML(item.image)+'" alt="">':'<span class="cube">◇</span>')+'<b>×'+Number(item.qty||1)+'</b>':'<span class="plus">+</span>')+
+   '</a>';
+ }).join('');
+ const details=items.map(({item,index})=>'<section class="detail" id="'+unique+index+'"><b>Ячейка '+(index+1)+'</b>'+
+ '<h3>'+escapeHTML(item.name)+'</h3>'+(item.nameRu?'<p>'+escapeHTML(item.nameRu)+'</p>':'')+
+ '<p>Количество: '+Number(item.qty||1)+'</p><a href="#top">↑ К складу</a></section>').join('');
+ const html='<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>'+escapeHTML(title)+' — RAIDER’S UTILITY</title>'+
+ '<style>@page{size:A4 landscape;margin:13mm}body{font:12px Arial,sans-serif;color:#14212a}h1{font-size:20px;margin:0 0 4px}header{margin-bottom:10px}.muted{color:#526470}.grid{display:grid;grid-template-columns:repeat('+columns+',1fr);gap:3px}.cell{height:59px;border:1px solid #a4b5c0;position:relative;display:flex;align-items:center;justify-content:center;text-decoration:none;color:#182b37;break-inside:avoid}.cell small{position:absolute;top:2px;left:4px;color:#74858d;font-size:9px}.cell img{max-width:85%;max-height:43px;object-fit:contain}.cell b{position:absolute;bottom:2px;right:3px;font-size:10px}.cell.filled{background:#e8f0f5}.plus{color:#a0b0b8}.detail{border-top:1px solid #cbd4da;break-inside:avoid;padding:7px 0;min-height:60px}.detail h3{margin:2px 0;font-size:15px}.detail p{margin:2px 0}.detail a{font-size:10px}#details{break-before:page}a{color:#216398}@media screen{body{max-width:1180px;margin:20px auto}.cell{height:80px}.cell img{max-height:65px}}@media print{.cell{height:55px}}</style></head><body><header id="top"><h1>'+escapeHTML(title)+'</h1><div class="muted">RAIDER’S UTILITY · '+state.capacity+' ячеек · '+items.length+' занято</div></header><div class="grid">'+cards+'</div><article id="details"><h2>Предметы</h2><p class="muted">Нажми на заполненную ячейку в PDF, чтобы перейти к названию предмета.</p>'+details+'</article></body></html>';
+ const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+ const url=URL.createObjectURL(blob);
+ const printWindow=window.open(url,'_blank');
+ if(!printWindow){URL.revokeObjectURL(url);toast('Разреши открывать новые вкладки для экспорта PDF');return}
+ printWindow.addEventListener('load',()=>{
+   // The browser print dialog creates PDF with working internal links in compatible viewers.
+   setTimeout(()=>{try{printWindow.focus();printWindow.print()}catch(e){console.warn('PDF print:',e)}},450);
+ },{once:true});
+ setTimeout(()=>URL.revokeObjectURL(url),120000);
+ toast('В окне печати выбери «Сохранить как PDF»');
+}
+$('exportPdf').addEventListener('click',exportStashPDF);
+
 $('exportBtn').addEventListener('click',()=>downloadJSON({version:1,area,capacity:state.capacity,columns:state.columns,slots:state.slots},area==='stash'?'arc-stash.json':'arc-raid.json'));
 $('exportAllBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
 $('importBtn').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.area&&x.area!==area){toast('Этот JSON относится к разделу «'+(x.area==='stash'?'Склад':'Рейд')+'». Переключитесь в него и повторите импорт.');return}if(x.version===2&&x.state&&Array.isArray(x.builds)){if(!confirm('Заменить все сохранённые сборки из JSON?'))return;builds=normBuilds(x.builds);applySaved(x.state);toast('Все сборки импортированы')}else{applySaved(x);toast('Инвентарь импортирован')}}catch(err){toast('Ошибка импорта: '+err.message)}finally{e.target.value=''}});
