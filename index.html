@@ -549,6 +549,18 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 #stashGridHost #inventory[data-columns="8"] .slot img,#stashGridHost #inventory[data-columns="9"] .slot img,
 #stashGridHost #inventory[data-columns="10"] .slot img,#stashGridHost #inventory[data-columns="11"] .slot img,
 #stashGridHost #inventory[data-columns="12"] .slot img{height:79%!important}
+
+/* v8.3: all catalog results, thematic tooltips and distinct progress state */
+#showMore{display:none!important}
+.cataloggrid>.catalog-item-wrap{content-visibility:auto;contain-intrinsic-size:auto 83px}
+.item-tooltip .tooltip-state{display:block;font-size:11px;font-weight:800;margin-top:6px}
+.item-tooltip .tooltip-state.is-collected{color:#73dfa2}
+.item-tooltip .tooltip-state.is-missing{color:#fb9188}
+.item-tooltip .tooltip-hint{display:block;color:#d6e1e6;font-weight:600;font-size:11px}
+.item-tooltip .tooltip-hint-category{font-size:10px;color:#e5b975}
+.collected-progress{display:inline-flex;align-items:center;gap:6px}
+.collected-progress b{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.item-tooltip{transition:none}}
 </style>
 </head>
 <body>
@@ -641,5 +653,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=8.2-unsaved-progress-single-pdf"></script>
+<script type="module" src="./app.js?v=8.3-catalog-tooltip-pdf"></script>
 </body></html>
