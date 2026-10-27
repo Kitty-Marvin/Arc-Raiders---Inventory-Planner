@@ -127,7 +127,7 @@ async function switchArea(next){
  else if(mode==='demo')setStatus('Демо · сохранено только в браузере');
  return true;
 }
-$('areaStash').addEventListener('click',async()=>{if(resourcesOpen){leaveResources();return}await switchArea('stash')});
+$('areaStash').addEventListener('click',async()=>{if(resourcesOpen&&area==='stash'){leaveResources();return}if(!await switchArea('stash'))return;leaveResources()});
 $('areaRaid').addEventListener('click',async()=>{if(!await switchArea('raid'))return;leaveResources()});
 $('areaResources').addEventListener('click',async()=>{if(await guardPlanNavigation())openResources()});
 function updateActiveSection(){
@@ -431,6 +431,7 @@ $('loginForm').addEventListener('submit',async e=>{
 });
 $('demoMode').addEventListener('click',async()=>{if(auth?.currentUser)await signOut(auth);demoLogin()});
 $('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!await siteConfirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
+ if(!await guardPlanNavigation())return;
  if(mode==='cloud'&&auth){allowCloudLogin=false;await signOut(auth);demoLogin()}else demoLogin()
 });
 $('syncRefresh').addEventListener('click',refreshCloud);
@@ -735,7 +736,7 @@ function renderCatalog(){
  else if(sort==='name')arr.sort((a,b)=>a.name.localeCompare(b.name,'en'));
  else if(sort==='value')arr.sort((a,b)=>(Number(b.value)||0)-(Number(a.value)||0)||a.name.localeCompare(b.name));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" title="Открыть веб-страницу MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<div class="catalog-item-wrap"><button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · Stack <strong>'+x.stackMax+'</strong>':''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>${x.source==='metaforge'&&/^[a-z0-9-]+$/.test(String(x.slug||''))?`<a class="item-meta-link" target="_blank" rel="noopener noreferrer" aria-label="Информация о ${esc(x.name)} на сайте MetaForge" href="https://metaforge.app/arc-raiders/database/item/${encodeURIComponent(x.slug)}">i</a>`:''}</div>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){
@@ -838,6 +839,19 @@ $('inventory').addEventListener('pointerover',e=>{
 });
 $('inventory').addEventListener('pointermove',e=>{if(itemTooltip.hidden)return;itemTooltip.style.left=Math.max(5,Math.min(innerWidth-280,e.clientX+16))+'px';itemTooltip.style.top=Math.max(5,Math.min(innerHeight-105,e.clientY+18))+'px'});
 $('inventory').addEventListener('pointerleave',hideItemTooltip);
+$('catalogGrid').addEventListener('pointerover',e=>{
+ const card=e.target.closest('[data-item]');if(!card)return;
+ const item=catalog.find(x=>x.id===card.dataset.item);if(!item)return;
+ itemTooltip.innerHTML='<strong>'+esc(item.name)+'</strong>'+(item.nameRu?'<span class="tooltip-ru">'+esc(item.nameRu)+'</span>':'')+'<span class="tooltip-meta">'+esc(item.rarity||item.category||'')+'</span>';
+ itemTooltip.hidden=false;
+});
+$('catalogGrid').addEventListener('pointermove',e=>{
+ if(itemTooltip.hidden)return;
+ itemTooltip.style.left=Math.max(5,Math.min(innerWidth-280,e.clientX+16))+'px';
+ itemTooltip.style.top=Math.max(5,Math.min(innerHeight-105,e.clientY+18))+'px';
+});
+$('catalogGrid').addEventListener('pointerleave',hideItemTooltip);
+
 $('inventory').addEventListener('click',e=>{const toggle=e.target.closest('[data-collected-slot]');if(toggle){e.stopPropagation();toggleCollected(Number(toggle.dataset.collectedSlot));return}const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
 $('catalogGrid').addEventListener('click',e=>{if(e.target.closest('.item-meta-link'))return;const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
 $('catalogGrid').addEventListener('dragstart',e=>{const b=e.target.closest('[data-item]');if(b){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'catalog',id:b.dataset.item}));e.dataTransfer.effectAllowed='copy'}});
