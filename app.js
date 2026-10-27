@@ -515,9 +515,9 @@ $('stashSort').addEventListener('change',e=>{
  stashSort=e.target.value;
  if(area==='stash')renderGrid();
 });
-function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);const shownSlots=area==='stash'?stashViewEntries():state.slots.map((item,index)=>({item,index}));grid.innerHTML=shownSlots.map(({item:s,index:i},v)=>`<button class="slot ${s?'filled':''} ${s?.collected?'collected':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc(isBlueprint(s)?'':(s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}"><span class="slotnum">${String(v+1).padStart(2,'0')}</span>${s&&area==='stash'?'<span class="collected-toggle" role="checkbox" tabindex="0" data-collected-slot="'+i+'" aria-label="Предмет собран" aria-checked="'+Boolean(s.collected)+'">'+(s.collected?'✓':'')+'</span>':''}${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name" lang="en">${esc(s.name)}</span>${s.nameRu&&s.nameRu!==s.name?`<span class="name-ru" lang="ru">${esc(s.nameRu)}</span>`:''}<span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
+function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.dataset.columns=String(state.columns);const shownSlots=area==='stash'?stashViewEntries():state.slots.map((item,index)=>({item,index}));grid.innerHTML=shownSlots.map(({item:s,index:i},v)=>`<button class="slot ${s?'filled':''} ${s?.collected?'collected':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc(isBlueprint(s)?'':(s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}"><span class="slotnum">${String(v+1).padStart(2,'0')}</span>${s&&area==='stash'?'<span class="collected-toggle" role="checkbox" tabindex="0" data-collected-slot="'+i+'" aria-label="Предмет собран" aria-checked="'+Boolean(s.collected)+'">'+(s.collected?'✓':'')+'</span>':''}${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name" lang="en">${esc(s.name)}</span>${s.nameRu&&s.nameRu!==s.name?`<span class="name-ru" lang="ru">${esc(s.nameRu)}</span>`:''}<span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
  const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
- if(area==='stash'){renderStashCategories();const done=state.slots.filter(x=>x?.collected).length;$('stashFilterCaption').textContent+=' · СОБРАНО '+done+'/'+used;}
+ if(area==='stash'){renderStashCategories();const done=state.slots.filter(x=>x?.collected).length;$('stashFilterCaption').textContent+=' · СОБРАНО '+done+'/'+used;$('clearCollected').hidden=done===0;}
 }
 
 // ----- Dynamic game-style LOADOUTS -----
@@ -679,7 +679,7 @@ function saveExistingPlanChanges(){
  builds[i]={...builds[i],...serializeState()};
  persist();renderSaves();toast('Сохранены изменения: '+name);
 }
-function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem" data-plan-index="${i}"><span class="plan-drag-handle" draggable="true" title="Перетащи для изменения порядка" aria-label="Переместить план">⠿</span><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-rename="${i}" class="small renameaction" title="Переименовать план" aria-label="Переименовать ${esc(b.name)}">✎</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
+function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem" data-plan-index="${i}"><span class="plan-drag-handle" title="Перетащи для изменения порядка" aria-label="Переместить план">⠿</span><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-rename="${i}" class="small renameaction" title="Переименовать план" aria-label="Переименовать ${esc(b.name)}">✎</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
 function renderAreaUi(){
  const stash=area==='stash';
  const plansPanel=$('plansPanel');
@@ -804,6 +804,7 @@ async function saveBuild(){const name=$('buildName').value.trim()||'Сборка
 function applySaved(x,name=null){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');activePlanNames[area]=name;state=normState(x);closeEditor();persist();renderAll()}
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('columns').addEventListener('change',e=>{state.columns=Number(e.target.value);persist();renderGrid()});$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-capacity]');if(b)updateCapacity(b.dataset.capacity)});
+$('clearCollected').addEventListener('click',async()=>{if(area!=='stash')return;const done=state.slots.filter(x=>x?.collected).length;if(!done)return;if(!await siteConfirm('Снять отметки со всех '+done+' собранных предметов?'))return;for(const item of state.slots)if(item)item.collected=false;persist();renderGrid();toast('Все галочки сняты')});
 function toggleCollected(i){
  if(area!=='stash'||!state.slots[i])return;
  state.slots[i].collected=!state.slots[i].collected;
@@ -901,49 +902,48 @@ $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(t
 $('clearBtn').addEventListener('click',async()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&await siteConfirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
 $('saveChanges').addEventListener('click',saveExistingPlanChanges);
-let draggingPlanIndex=null;
-$('savedList').addEventListener('dragstart',e=>{
- const handle=e.target.closest('.plan-drag-handle');
- if(!handle)return;
- const plan=handle.closest('[data-plan-index]');
- if(!plan)return;
- draggingPlanIndex=Number(plan.dataset.planIndex);
- e.dataTransfer.effectAllowed='move';
- e.dataTransfer.setData('text/plain',String(draggingPlanIndex));
- plan.classList.add('plan-dragging');
-});
-$('savedList').addEventListener('dragover',e=>{
- if(draggingPlanIndex===null)return;
- const target=e.target.closest('[data-plan-index]');
- if(!target)return;
- e.preventDefault();e.dataTransfer.dropEffect='move';
- for(const node of $('savedList').querySelectorAll('[data-plan-index]'))
-  node.classList.remove('plan-drop-before','plan-drop-after');
- const bounds=target.getBoundingClientRect(),after=e.clientX>bounds.left+bounds.width/2;
- target.classList.add(after?'plan-drop-after':'plan-drop-before');
-});
-function resetPlanDrag(){
- draggingPlanIndex=null;
- for(const node of $('savedList').querySelectorAll('[data-plan-index]'))
-  node.classList.remove('plan-dragging','plan-drop-before','plan-drop-after');
+
+let planPointer=null;
+function planDropHint(index,after){
+ for(const node of $('savedList').querySelectorAll('[data-plan-index]')){
+  const idx=Number(node.dataset.planIndex);
+  node.classList.toggle('plan-scoot-before',idx===index&&!after);
+  node.classList.toggle('plan-scoot-after',idx===index&&after);
+ }
 }
-$('savedList').addEventListener('drop',e=>{
- if(draggingPlanIndex===null)return;
- const target=e.target.closest('[data-plan-index]');
- if(!target){resetPlanDrag();return}
- e.preventDefault();
- const from=draggingPlanIndex,to=Number(target.dataset.planIndex);
- const bounds=target.getBoundingClientRect(),after=e.clientX>bounds.left+bounds.width/2;
- const destination=to+(after?1:0);
- resetPlanDrag();
- if(from<0||from>=builds.length)return;
- const reordered=[...builds],plan=reordered.splice(from,1)[0],place=destination>from?destination-1:destination;
- if(place===from)return;
- reordered.splice(Math.max(0,Math.min(reordered.length,place)),0,plan);
- builds=reordered;persist();renderSaves();toast('Порядок планов сохранён');
+function finishPlanPointer(cancel=false){
+ const p=planPointer;if(!p)return;planPointer=null;
+ if(p.handle.hasPointerCapture(p.pointerId))p.handle.releasePointerCapture(p.pointerId);
+ p.ghost?.remove();
+ $('savedList').querySelectorAll('.saveitem').forEach(n=>n.classList.remove('plan-dragging','plan-scoot-before','plan-scoot-after'));
+ if(cancel||!p.moved||p.target===null)return;
+ const result=[...builds],item=result.splice(p.from,1)[0];
+ if(!item)return;
+ const insert=p.target+(p.after?1:0)-(p.from<p.target+(p.after?1:0)?1:0);
+ if(insert===p.from)return;
+ result.splice(insert,0,item);builds=result;persist();renderSaves();toast('Порядок планов сохранён');
+}
+$('savedList').addEventListener('pointerdown',e=>{
+ const handle=e.target.closest('.plan-drag-handle');if(!handle||e.button!==0)return;
+ const node=handle.closest('[data-plan-index]');if(!node)return;
+ e.preventDefault();const rect=node.getBoundingClientRect();
+ planPointer={handle,pointerId:e.pointerId,from:Number(node.dataset.planIndex),startX:e.clientX,startY:e.clientY,offsetX:e.clientX-rect.left,offsetY:e.clientY-rect.top,target:null,after:false,moved:false,ghost:null};
+ handle.setPointerCapture(e.pointerId);
 });
-$('savedList').addEventListener('dragend',resetPlanDrag);
-document.addEventListener('dragend',resetPlanDrag);
+$('savedList').addEventListener('pointermove',e=>{
+ const p=planPointer;if(!p||p.pointerId!==e.pointerId)return;
+ if(!p.moved&&Math.hypot(e.clientX-p.startX,e.clientY-p.startY)<5)return;
+ if(!p.moved){
+  p.moved=true;const node=p.handle.closest('[data-plan-index]'),rect=node.getBoundingClientRect();
+  p.ghost=node.cloneNode(true);p.ghost.classList.add('plan-ghost');p.ghost.style.width=rect.width+'px';document.body.appendChild(p.ghost);node.classList.add('plan-dragging');
+ }
+ p.ghost.style.left=e.clientX-p.offsetX+'px';p.ghost.style.top=e.clientY-p.offsetY+'px';
+ const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-plan-index]');
+ if(!target||!$('savedList').contains(target)||Number(target.dataset.planIndex)===p.from){p.target=null;planDropHint(-1,false);return}
+ const rect=target.getBoundingClientRect();p.target=Number(target.dataset.planIndex);p.after=e.clientX>=rect.left+rect.width/2;planDropHint(p.target,p.after);
+});
+$('savedList').addEventListener('pointerup',e=>{if(planPointer?.pointerId===e.pointerId)finishPlanPointer()});
+$('savedList').addEventListener('pointercancel',e=>{if(planPointer?.pointerId===e.pointerId)finishPlanPointer(true)});
 $('savedList').addEventListener('click',async e=>{
  const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]'),rename=e.target.closest('[data-rename]');
  if(rename){
@@ -967,7 +967,7 @@ $('savedList').addEventListener('click',async e=>{
 function exportStashPDF(){
  if(area!=='stash'){toast('PDF доступен для STASH');return}
  const items=state.slots.map((item,index)=>({item,index})).filter(x=>x.item);
- const columns=8; // Keep PDF cells compact, regardless of on-screen STASH columns.
+ const columns=Math.max(4,Math.min(12,state.columns)); // Respect user's on-screen column selection.
  const title=(activePlanNames.stash||'STASH').replace(/[<>]/g,'');
  const escapeHTML=esc;
  const unique='item-'+Date.now().toString(36)+'-';
@@ -1005,19 +1005,35 @@ $('importBtn').addEventListener('click',()=>$('importFile').click());$('importFi
 // --- Sharing only explicit snapshots. Every private workspace stays behind owner rules. ---
 function shareUrl(id){const url=new URL(location.origin+location.pathname);url.searchParams.set('share',id);return url.toString()}
 async function copyText(s){try{await navigator.clipboard.writeText(s);toast('Ссылка скопирована')}catch{sitePrompt('Скопируйте ссылку:',s)}}
-function revealShareLink(id){$('shareLinkInput').value=shareUrl(id);$('shareLinkBox').hidden=false;$('shareLinkInput').focus();$('shareLinkInput').select();}
+let shareToastTimer=null,sharePointer={x:0,y:0};
+document.addEventListener('pointermove',e=>{sharePointer={x:e.clientX,y:e.clientY}},{passive:true});
+function cursorCopied(){
+ const node=$('cursorToast');node.textContent='✓ Ссылка скопирована';node.hidden=false;
+ node.style.left=Math.min(window.innerWidth-175,Math.max(8,sharePointer.x+14))+'px';
+ node.style.top=Math.min(window.innerHeight-45,Math.max(8,sharePointer.y+15))+'px';
+ clearTimeout(shareToastTimer);shareToastTimer=setTimeout(()=>node.hidden=true,1900);
+}
+async function revealShareLink(id){
+ $('shareLinkBox').hidden=true;const url=shareUrl(id);
+ try{await navigator.clipboard.writeText(url);cursorCopied()}
+ catch(err){
+  const textarea=document.createElement('textarea');textarea.value=url;textarea.style.position='fixed';textarea.style.opacity='0';
+  document.body.append(textarea);textarea.select();const ok=document.execCommand('copy');textarea.remove();
+  if(ok)cursorCopied();else await sitePrompt('Скопируй ссылку:',url);
+ }
+}
 $('copyShareLink').addEventListener('click',()=>copyText($('shareLinkInput').value));
 $('closeShareLink').addEventListener('click',()=>{$('shareLinkBox').hidden=true});
 async function publishBuild(i){
  const b=builds[i];if(!b)return;
  if(mode!=='cloud'||!user||!ready){toast('Для публикации сборки войдите в личный аккаунт. Демо-сборки доступны только на этом ПК.');return}
- if(b.shareId){revealShareLink(b.shareId);return}
+ if(b.shareId){await revealShareLink(b.shareId);return}
  const id=crypto.randomUUID().replace(/-/g,'');
  const record={ownerUid:user.uid,name:b.name,area,build:{capacity:b.capacity,columns:b.columns,slots:b.slots.map(normSlot),...(area==='raid'?{raidGear:normalizeGear(b.raidGear)}:{})},createdAt:new Date().toISOString()};
  try{
   if(new Blob([JSON.stringify(record)]).size>700000)throw new Error('Слишком большая сборка для публикации');
   await setDoc(doc(db,'sharedBuilds',id),record);
-  b.shareId=id;persist();renderSaves();revealShareLink(id);toast('Сборка опубликована. Только эту копию можно открыть по ссылке.');
+  b.shareId=id;persist();renderSaves();await revealShareLink(id);
  }catch(err){toast('Не удалось опубликовать: '+message(err))}
 }
 async function revokeBuild(b,quiet=false){
