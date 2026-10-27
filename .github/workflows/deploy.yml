@@ -26,6 +26,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch ARC Tracker item localizations (only items folder)
+        uses: actions/checkout@v4
+        with:
+          repository: RaidTheory/arcraiders-data
+          path: external/arcraiders-data
+          sparse-checkout: items
+          sparse-checkout-cone-mode: true
+          persist-credentials: false
       - name: Update cached ARC Raiders items (MetaForge / ARDB)
         run: python scripts/update_catalog.py --source all
         continue-on-error: true # old cache stays available if source is down
