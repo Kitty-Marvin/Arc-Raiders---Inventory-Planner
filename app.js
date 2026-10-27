@@ -268,7 +268,8 @@ function stashViewEntries(){
   const byWorth=stashValue(bb)-stashValue(aa);
   const byName=String(aa.nameRu||aa.name||'').localeCompare(String(bb.nameRu||bb.name||''),'ru',{sensitivity:'base'});
   let difference=0;
-  if(stashSort==='rarity')difference=byRarity||byWorth||byType||byName;
+  if(stashSort==='none')difference=a.index-b.index;
+  else if(stashSort==='rarity')difference=byRarity||byWorth||byType||byName;
   else if(stashSort==='value')difference=byWorth||byRarity||byType||byName;
   else if(stashSort==='name')difference=byName||byRarity||byWorth;
   else difference=byType||byRarity||byWorth||byName;
@@ -294,7 +295,7 @@ $('stashCategoryBar').addEventListener('click',e=>{
  state.selectedSlot=null;renderGrid();
 });
 $('stashSort').addEventListener('change',e=>{
- if(!['type','rarity','value','name'].includes(e.target.value))return;
+ if(!['none','type','rarity','name','value'].includes(e.target.value))return;
  stashSort=e.target.value;
  if(area==='stash')renderGrid();
 });
