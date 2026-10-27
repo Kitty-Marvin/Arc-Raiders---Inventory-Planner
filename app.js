@@ -234,11 +234,18 @@ function blueprintArtwork(item){
 }
 // STASH visual filter: leaves saved slots and their indices unchanged.
 const STASH_CATEGORIES=[
- ['all','ВСЁ','Icon_AllItems.png','▦'],['material','МАТЕРИАЛЫ','Icon_Material.png','◉'],['shield','ЩИТЫ','Icon_Shield.png','⬡'],
+ ['all','ВСЁ','Icon_AllItems.png','▦'],
+ ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],
+ ['shield','ЩИТЫ','Icon_Shield.png','⬡'],
  ['weapon','ОРУЖИЕ','Icon_Weapon.png','⌁'],
- ['ammo','ПАТРОНЫ','Icon_Ammo.png','▥'],['quick','РАСХОДНИКИ','Icon_QuickUse.png','✚'],
- ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],['key','КЛЮЧИ','Icon_Key.png','⚿'],
- ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤'],['other','ПРОЧЕЕ','Icon_Misc.png','⬡']];
+ ['ammo','ПАТРОНЫ','Icon_Ammo.png','▥'],
+ ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],
+ ['quick','РАСХОДНИКИ','Icon_QuickUse.png','✚'],
+ ['key','КЛЮЧИ','Icon_Key.png','⚿'],
+ ['material','МАТЕРИАЛЫ','Icon_Material.png','◉'],
+ ['other','ПРОЧЕЕ','Icon_Misc.png','⬡'],
+ ['research','ЧЕРТЕЖИ','Icon_Research.png','▤']
+];
 let stashFilter='all',stashSort='type';
 function stashKind(item){
  const cat=String(item?.category||'').toLowerCase(),name=String(item?.name||'').toLowerCase();
@@ -479,7 +486,7 @@ function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · stack '+x.stackMax:''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
