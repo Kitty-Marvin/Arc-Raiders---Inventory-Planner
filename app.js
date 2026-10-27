@@ -48,7 +48,7 @@ const demoItems = [
 const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
-let allowCloudLogin=false;let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
+let allowCloudLogin=false,loginSubmitting=false;let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
@@ -214,11 +214,22 @@ function setLogin(messageText=''){$('loginOverlay').hidden=false;$('loginMessage
 async function initialize(){restore();renderAll();renderCatalog();demoLogin();
  if(!configured){setStatus('Гость · локальный режим');return}
  try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
-  onAuthStateChanged(auth,async u=>{if(u&&allowCloudLogin){demoChosen=false;await startCloud(u)}else if(!u&&mode!=='demo'){demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
- }catch(err){setLogin('Ошибка Firebase: '+message(err))}
+  onAuthStateChanged(auth,async u=>{if(u&&allowCloudLogin&&!loginSubmitting&&mode!=='cloud'){demoChosen=false;await startCloud(u)}else if(!u&&mode==='cloud'){allowCloudLogin=false;demoLogin()}},err=>setStatus('Гость · Firebase: '+message(err)));
+ }catch(err){setStatus('Гость · Firebase: '+message(err))}
 }
 $('loginOpen').addEventListener('click',()=>setLogin());
-$('loginClose').addEventListener('click',()=>{$('loginOverlay').hidden=true;if(mode==='demo')setStatus('Гость · локальный режим')});
+function closeLogin(){
+ $('loginOverlay').hidden=true;
+ $('loginMessage').textContent='';
+ $('loginPassword').value='';
+ if(mode!=='cloud'||!ready){
+   if(mode==='cloud'&&!ready){allowCloudLogin=false;demoLogin()}
+   else setStatus('Гость · локальный режим');
+ }
+}
+$('loginClose').addEventListener('click',closeLogin);
+$('loginOverlay').addEventListener('click',e=>{if(e.target===$('loginOverlay'))closeLogin()});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('loginOverlay').hidden)closeLogin()});
 $('signupToggle').addEventListener('click',()=>{
  registerMode=!registerMode;
  $('loginTitle').textContent=registerMode?'Создать аккаунт':'Войти в планировщик';
@@ -229,13 +240,27 @@ $('signupToggle').addEventListener('click',()=>{
  $('loginPassword').autocomplete=registerMode?'new-password':'current-password';
  $('loginMessage').textContent='';
 });
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!configured||!auth){$('loginMessage').textContent='Сначала заполните firebase-config.js';return}
- const btn=$('authSubmit');btn.disabled=true;$('loginMessage').textContent=registerMode?'Создаём аккаунт…':'Проверка email и пароля…';
- try{allowCloudLogin=true;demoChosen=false;const email=$('loginEmail').value.trim(),pass=$('loginPassword').value;
-  if(registerMode)await createUserWithEmailAndPassword(auth,email,pass);
-  else await signInWithEmailAndPassword(auth,email,pass);
-  $('loginPassword').value='';$('loginMessage').textContent='';
- }catch(err){allowCloudLogin=false;$('loginMessage').textContent=message(err)}finally{btn.disabled=false}
+$('loginForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ if(!configured||!auth||!db){$('loginMessage').textContent='Firebase недоступен. Можно продолжить как гость.';return}
+ if(loginSubmitting)return;
+ loginSubmitting=true;
+ const btn=$('authSubmit');btn.disabled=true;
+ $('loginMessage').textContent=registerMode?'Создаём аккаунт…':'Проверка email и пароля…';
+ try{
+  allowCloudLogin=true;
+  const email=$('loginEmail').value.trim(),pass=$('loginPassword').value;
+  const result=registerMode?await createUserWithEmailAndPassword(auth,email,pass):await signInWithEmailAndPassword(auth,email,pass);
+  demoChosen=false;
+  $('loginPassword').value='';
+  // Explicitly load the cloud workspace even if Firebase sees the same logged-in UID.
+  await startCloud(result.user);
+ }catch(err){
+  allowCloudLogin=false;
+  $('loginMessage').textContent=message(err);
+  setStatus('Гость · ошибка входа');
+  if(mode==='cloud'&&!ready)demoLogin();
+ }finally{loginSubmitting=false;btn.disabled=false}
 });
 $('demoMode').addEventListener('click',async()=>{if(auth?.currentUser)await signOut(auth);demoLogin()});
 $('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!confirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
