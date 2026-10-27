@@ -120,13 +120,13 @@ function renderResources(){
  if(!resourceData)return;
  const query=$('resourceSearch').value.toLocaleLowerCase().trim();
  const items=resourceData.items||{},recipes=resourceData.recipes||[];
- const resourceIds=[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(query));
+ const resourceIds=query?[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&!resourceSelection.has(id)&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(query)):[];
  $('resourceList').innerHTML=resourceIds.slice(0,120).map(id=>{
   const item=items[id],selected=resourceSelection.has(id);
   return `<button type="button" data-resource="${esc(id)}" class="${selected?'active':''}" aria-pressed="${selected}">${validImage(item.image)?`<img src="${esc(item.image)}" alt="">`:''}<span>${esc(item.name)}${item.nameRu?'<small> · '+esc(item.nameRu)+'</small>':''}</span>${selected?'<b>✓</b>':''}</button>`;
  }).join('');
  const selected=[...resourceSelection].filter(id=>items[id]);
- $('resourceChosen').innerHTML=selected.length?selected.map(id=>`<span class="resource-chip">${esc(items[id].nameRu||items[id].name)} <button data-remove-resource="${esc(id)}" aria-label="Убрать ${esc(items[id].name)}">×</button></span>`).join(''):'<span class="hint">Выбери один или несколько нужных ресурсов</span>';
+ $('resourceChosen').innerHTML=selected.length?selected.map(id=>`<span class="resource-chip">${validImage(items[id].image)?`<img class="resource-chip-image" src="${esc(items[id].image)}" alt="" loading="lazy">`:'<span class="resource-chip-fallback" aria-hidden="true">⬡</span>'}<span class="resource-chip-name">${esc(items[id].nameRu||items[id].name)}</span><button type="button" data-remove-resource="${esc(id)}" aria-label="Убрать ${esc(items[id].name)}">×</button></span>`).join(''):'<span class="hint">Выбери один или несколько нужных ресурсов</span>';
  if(!selected.length){$('resourceResults').innerHTML='<p class="hint">Выбери нужные ресурсы. Рецепты будут отсортированы по минимальному количеству лишних ресурсов.</p>';return}
  const selectedSet=new Set(selected);
  // Coverage first, then fewer unnecessary tracked ingredients.
@@ -150,8 +150,10 @@ function renderResources(){
 $('resourceSearch').addEventListener('input',renderResources);
 $('resourceList').addEventListener('click',e=>{
  const btn=e.target.closest('[data-resource]');if(!btn)return;
- const id=btn.dataset.resource;if(resourceSelection.has(id))resourceSelection.delete(id);else resourceSelection.add(id);
+ const id=btn.dataset.resource;if(!resourceSelection.has(id))resourceSelection.add(id);
+ $('resourceSearch').value='';
  renderResources();
+ $('resourceSearch').focus();
 });
 $('resourceChosen').addEventListener('click',e=>{const b=e.target.closest('[data-remove-resource]');if(!b)return;resourceSelection.delete(b.dataset.removeResource);renderResources()});
 
@@ -196,7 +198,13 @@ async function startCloud(u){stopCloud();const epoch=sessionToken;user=u;mode='c
   },e=>{if(epoch===sessionToken){setStatus('Ошибка синхронизации: '+message(e));toast(message(e))}});
   if(uploadLocal){dirty++;saveLocal();await saveCloud()}
   fetchCatalog();
- }catch(err){if(epoch!==sessionToken)return;ready=false;setStatus('Ошибка: '+message(err));$('loginOverlay').hidden=false;$('loginMessage').textContent='Не удалось открыть базу: '+message(err);}
+ }catch(err){if(epoch!==sessionToken)return;ready=false;
+   $('loginOverlay').hidden=true;
+   $('loginOpen').hidden=Boolean(auth?.currentUser);
+   $('logoutBtn').hidden=!auth?.currentUser;
+   setStatus('Вход сохранён · ошибка синхронизации: '+message(err));
+   toast('Не удалось загрузить облачный склад. Попробуй «Обновить».');
+ }
 }
 class ConflictError extends Error { constructor(){super('CONFLICT');this.code='CONFLICT'} }
 async function saveCloud(){clearTimeout(saveTimer);if(mode!=='cloud'||!ready||saveBusy||halted||saved===dirty)return;
@@ -223,7 +231,8 @@ async function saveCloud(){clearTimeout(saveTimer);if(mode!=='cloud'||!ready||sa
  }
  }finally{saveBusy=false;}
 }
-async function refreshCloud(){if(mode==='demo'){toast('Демо работает только в этом браузере');return}
+async function refreshCloud(){if(mode==='cloud'&&!ready&&auth?.currentUser){await startCloud(auth.currentUser);return}
+ if(mode==='demo'){toast('Демо работает только в этом браузере');return}
  if(!ready||!workspace)return toast('Нужно войти');
  if(dirty>saved){if(!confirm('Есть несохранённые изменения. Скачать их резервную копию JSON и загрузить облачную версию?'))return;downloadJSON({version:2,state:serializeState(),builds},'arc-unsaved-backup.json');}
  try{const snap=await getDocFromServer(workspace);if(snap.exists())applyRemote(snap.data(),Number(snap.data().revision)||0,true);else{applyRemote({state:initial(area),builds:[]},0);}
@@ -231,16 +240,38 @@ async function refreshCloud(){if(mode==='demo'){toast('Демо работает
 }
 function demoLogin(){stopCloud();demoChosen=true;mode='demo';ready=true;$('loginOverlay').hidden=true;$('logoutBtn').hidden=true;$('loginOpen').hidden=false;restore();renderAll();setStatus('Демо · сохранено только в браузере');fetchCatalog()}
 function setLogin(messageText=''){$('loginOverlay').hidden=false;$('loginMessage').textContent=messageText;$('logoutBtn').hidden=true;setStatus('Требуется вход в Firebase');}
-async function initialize(){restore();renderAll();renderCatalog();demoLogin();
- if(!configured){setStatus('Гость · локальный режим');return}
- try{const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
-  await setPersistence(auth,browserLocalPersistence);
-  onAuthStateChanged(auth,async u=>{
-    if(u&&!loginSubmitting&&(mode!=='cloud'||user?.uid!==u.uid)){
-      allowCloudLogin=true;demoChosen=false;await startCloud(u);
-    }else if(!u&&mode==='cloud'){allowCloudLogin=false;demoLogin()}
-  },err=>setStatus('Гость · Firebase: '+message(err)));
- }catch(err){setStatus('Гость · Firebase: '+message(err))}
+async function initialize(){
+ restore();renderAll();renderCatalog();
+ if(!configured){demoLogin();setStatus('Гость · Firebase не настроен');return}
+ setStatus('Проверяем сохранённую сессию…');
+ try{
+  const app=initializeApp(firebaseConfig);
+  auth=getAuth(app);db=getFirestore(app);
+  try{
+   await setPersistence(auth,browserLocalPersistence);
+  }catch(persistenceError){
+   console.warn('Не удалось включить постоянную авторизацию:',persistenceError);
+   setStatus('Вход может не сохраняться: браузер блокирует хранилище');
+  }
+  onAuthStateChanged(auth,async currentUser=>{
+   if(loginSubmitting)return;
+   if(currentUser){
+    if(mode==='cloud'&&user?.uid===currentUser.uid&&ready)return;
+    demoChosen=false;allowCloudLogin=true;
+    await startCloud(currentUser);
+   }else if(mode!=='demo'){
+    allowCloudLogin=false;demoLogin();
+   }else setStatus('Гость · локальные данные');
+  },error=>{
+   console.warn('Firebase auth error:',error);
+   if(mode!=='demo')demoLogin();
+   setStatus('Не удалось проверить вход: '+message(error));
+  });
+ }catch(error){
+  console.warn('Firebase initialization error:',error);
+  demoLogin();
+  setStatus('Гость · ошибка Firebase: '+message(error));
+ }
 }
 $('loginOpen').addEventListener('click',()=>setLogin());
 function closeLogin(){
@@ -304,7 +335,9 @@ function isStashItem(item){
  const name=String(item?.name||''),category=String(item?.category||'').trim().toLowerCase();
  if(NON_STASH_CATEGORIES.has(category))return false;
  if(/\((outfit|skin|emote|backpack charm|backpack attachment|face style|colour|color)\)/i.test(name))return false;
- if(/^(amplified\s|amplification module\b)/i.test(name)||String(item?.rarity||'').toLowerCase()==='amplified')return false;
+ // Amplified weapons are real weapon variants and belong in STASH.
+ if(/^amplification module\b/i.test(name))return false;
+ if(/^amplified\s/i.test(name)&&category!=='weapon')return false;
  if(/^(coins|raider tokens|research points)$/i.test(name))return false;
  // Category "Stencil" may refer to a physical stencil; keep it until proven otherwise.
  if(category==='misc'&&/\b(face style|colour|color)\b/i.test(name))return false;
@@ -661,7 +694,12 @@ $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
 $('inventory').addEventListener('drop',e=>{const b=e.target.closest('[data-slot]');if(!b)return;e.preventDefault();const to=Number(b.dataset.slot);try{const data=JSON.parse(e.dataTransfer.getData('text/plain'));if(data.kind==='catalog')addItem(data.id,to);else if(data.kind==='ref'&&area==='raid'){moveRef(data.from,'bag:'+to)}else if(data.kind==='slot'){const from=Number(data.from);if(from>=0&&from<state.capacity&&from!==to){[state.slots[from],state.slots[to]]=[state.slots[to],state.slots[from]];state.selectedSlot=to;persist();renderGrid()}}}catch{toast('Не удалось перенести предмет')}});
 $('catalogKind').addEventListener('change',renderCatalog);
-$('catalogSort').addEventListener('change',()=>{shown=80;renderCatalog()});
+$('catalogSort').addEventListener('change',()=>{
+  const mode=$('catalogSort').value;
+  if(!['rarity','name','value'].includes(mode))return;
+  try{localStorage.setItem('raiders-catalog-sort-v1',mode)}catch(error){console.warn('Catalog sorting preference not saved:',error)}
+  shown=80;renderCatalog();
+});
 $('catalogKindIcons').addEventListener('click',e=>{const b=e.target.closest('[data-kind]');if(!b)return;$('catalogKind').value=b.dataset.kind;shown=80;renderCatalog()});
 $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category').addEventListener('change',()=>{shown=80;renderCatalog()});$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
@@ -742,6 +780,11 @@ $('closeShared').addEventListener('click',()=>{
  const url=new URL(location.href);url.searchParams.delete('share');history.replaceState(null,'',url);
 });
 
+// Restore sorting preference before the first catalog render.
+try{
+ const savedSort=localStorage.getItem('raiders-catalog-sort-v1');
+ $('catalogSort').value=['rarity','name','value'].includes(savedSort)?savedSort:'rarity';
+}catch(error){$('catalogSort').value='rarity'}
 initialize();
 if(incomingShareId){
  // Wait for Firebase setup to finish; guests can view without signing in.
