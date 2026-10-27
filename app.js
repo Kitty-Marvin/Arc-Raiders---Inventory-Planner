@@ -455,7 +455,7 @@ function renderAreaUi(){
  $('areaStash').setAttribute('aria-selected',String(stash));$('areaRaid').setAttribute('aria-selected',String(!stash));
  $('workspaceTitle').textContent=stash?'МОЙ СКЛАД · STASH':'LOADOUTS';
  $('areaDescription').textContent=stash?'Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.':'Отдельный план снаряжения и предметов для выхода на поверхность. Не меняет склад.';
- $('plansTitle').textContent=stash?'02 / ПЛАНЫ СКЛАДА':'02 / РЕЙДОВЫЕ СБОРКИ';
+ $('plansTitle').textContent=stash?'ПЛАНЫ СКЛАДА':'РЕЙДОВЫЕ СБОРКИ';
  $('saveBuild').textContent=stash?'Сохранить план склада':'Сохранить сборку';
  $('buildName').placeholder=stash?'Название плана (например: Основной склад)':'Название сборки (например: Фарм Бастиона)';
  $('capacity').max=stash?STASH_MAX:RAID_MAX;
