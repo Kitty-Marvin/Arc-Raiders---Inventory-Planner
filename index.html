@@ -153,6 +153,15 @@
  .stash-category .cat-name{font-size:11px}
  .stash-category .cat-count{margin-left:3px}
 }
+
+/* v6.6: sorting controls and visible remaining free slots for all category filters */
+.stash-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:8px}
+.stash-toolbar .stash-filter-caption{margin:0;min-height:32px;font-size:11px}
+.stash-sort-label{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:750;letter-spacing:.5px;color:#acc1cd}
+.stash-sort-label select{min-width:132px;padding:7px 24px 7px 9px;background:#13212d;border-color:#58707f;border-radius:6px;font-size:12px;color:#e3edf2}
+#stashGridHost .inventory .slot{display:flex}
+#stashGridHost .inventory .slot[hidden]{display:none!important}
+@media(max-width:700px){.stash-toolbar{align-items:stretch}.stash-sort-label{margin-left:auto}}
 </style>
 </head>
 <body>
@@ -166,7 +175,17 @@
 <div id="plansTopAnchor"></div><div id="stashGridHost"><div class="stash-browser">
   <nav id="stashCategoryBar" class="stash-categories" aria-label="Категории предметов склада"></nav>
   <div class="stash-item-area">
-    <div id="stashFilterCaption" class="stash-filter-caption" role="status" aria-live="polite"></div>
+    <div class="stash-toolbar">
+      <div id="stashFilterCaption" class="stash-filter-caption" role="status" aria-live="polite"></div>
+      <label class="stash-sort-label" for="stashSort">СОРТИРОВКА
+        <select id="stashSort" aria-label="Сортировка склада">
+          <option value="type">По типу</option>
+          <option value="rarity">По редкости</option>
+          <option value="value">По стоимости</option>
+          <option value="name">По названию</option>
+        </select>
+      </label>
+    </div>
     <div id="stashGridMount"><div class="inventory" id="inventory" aria-label="Сетка ячеек инвентаря"></div></div>
   </div>
 </div></div>
