@@ -478,6 +478,30 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 .action-buttons .primary.danger-confirm{background:#d77f73;border-color:#d77f73;color:#17202a}
 .keycap{font-size:9px;opacity:.6;padding-left:5px}
 @media(max-width:540px){.action-buttons{flex-direction:column-reverse}.action-buttons button{width:100%}}
+
+/* v8.0: collected-STASH markers, animated saved-plan ordering */
+#stashGridHost .slot .collected-toggle{
+ position:absolute;z-index:4;top:20px;left:5px;width:19px;height:19px;
+ display:grid;place-items:center;border-radius:4px;
+ border:1px solid #687b87;background:#0b151dd9;
+ color:#a8bbc5;font:800 12px/1 'Segoe UI',Arial,sans-serif;
+ cursor:pointer;opacity:.83;transition:background .15s,border-color .15s,transform .15s,opacity .15s;
+}
+#stashGridHost .slot .collected-toggle:hover{transform:scale(1.12);opacity:1;border-color:#d9b16c}
+#stashGridHost .slot .collected-toggle:focus-visible{outline:2px solid #ecbb73;outline-offset:1px}
+#stashGridHost .slot .collected-toggle[aria-checked="true"]{background:#1e5747;border-color:#76d9a8;color:#e3fff2;opacity:1;box-shadow:0 0 7px #55cf9933}
+#stashGridHost .slot.collected .name,#stashGridHost .slot.collected .name-ru{color:#c8e7d8}
+#stashGridHost .slot.collected{background-image:linear-gradient(150deg,#344940,#17282a)}
+#stashGridHost .slot .collected-toggle{user-select:none}
+.saveitem{will-change:transform;transition:transform 180ms cubic-bezier(.16,.84,.3,1),box-shadow 140ms ease,border-color 140ms ease}
+.saveitem.plan-drop-before{transform:translateX(23px);box-shadow:inset 4px 0 #e8a74e,0 5px 14px #0003}
+.saveitem.plan-drop-after{transform:translateX(-23px);box-shadow:inset -4px 0 #e8a74e,0 5px 14px #0003}
+.saveitem.plan-dragging{opacity:.4;filter:saturate(.7)}
+@media(prefers-reduced-motion:reduce){
+ .saveitem,.slot .collected-toggle{transition:none!important}
+ .saveitem.plan-drop-before,.saveitem.plan-drop-after{transform:none!important}
+}
+
 </style>
 </head>
 <body>
@@ -570,5 +594,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=7.9-saved-plan-drag-dialog"></script>
+<script type="module" src="./app.js?v=8.0-check-progress-pdf"></script>
 </body></html>
