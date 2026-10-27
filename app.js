@@ -34,7 +34,7 @@ const createGear=(id='looting1')=>{const a=augmentById(id);return {augmentId:a.i
 function normalizeGear(x,legacyExtra=[]){
  const a=augmentById(x?.augmentId),base=createGear(a.id),overflow=Array.isArray(x?.overflow)?x.overflow.map(normSlot).filter(Boolean).slice(0,350):[];
  const fit=(source,count)=>{const xs=Array.isArray(source)?source.map(normSlot):[];overflow.push(...xs.slice(count).filter(Boolean));return Array.from({length:count},(_,i)=>xs[i]||null)};
- base.shield=normSlot(x?.shield);base.weapons=fit(x?.weapons,2);base.quick=fit(x?.quick,a.quick);base.safe=fit(x?.safe,a.safe);base.augmented=fit(x?.augmented,a.extraCount);
+ base.shield=normSlot(x?.shield);if(base.shield&&!canEquipShield(base.shield,a.id)){overflow.push(base.shield);base.shield=null}base.weapons=fit(x?.weapons,2);base.quick=fit(x?.quick,a.quick);base.safe=fit(x?.safe,a.safe);base.augmented=fit(x?.augmented,a.extraCount);
  base.overflow=[...overflow,...legacyExtra.map(normSlot).filter(Boolean)].slice(0,350);return base;
 }
 
@@ -238,12 +238,14 @@ function layoutAugment(id){
  const resize=(arr,n)=>{carry.push(...arr.slice(n).filter(Boolean));return Array.from({length:n},(_,i)=>arr[i]||null)};
  const slots=resize(state.slots,a.backpack);
  const quick=resize(old.quick,a.quick),safe=resize(old.safe,a.safe),augmented=(augmentById(old.augmentId).extraType===a.extraType?resize(old.augmented,a.extraCount):(carry.push(...old.augmented.filter(Boolean)),Array(a.extraCount).fill(null)));
+ const shield=canEquipShield(old.shield,a.id)?old.shield:null;
+ if(old.shield&&!shield)carry.push(old.shield);
  const dropped=carry.length-old.overflow.length;
- state={...state,capacity:a.backpack,columns:4,slots,selectedSlot:null,raidGear:{augmentId:a.id,shield:old.shield,weapons:old.weapons,quick,safe,augmented,overflow:carry}};
- persist();renderAll();toast(`Выбран ${a.name}. ${dropped?'Неразмещённые предметы сохранены отдельно: '+dropped:'Структура ячеек обновлена.'}`);
+ state={...state,capacity:a.backpack,columns:4,slots,selectedSlot:null,raidGear:{augmentId:a.id,shield,weapons:old.weapons,quick,safe,augmented,overflow:carry}};
+ persist();renderAll();toast(`Выбран ${a.name}. ${old.shield&&!shield?'Несовместимый щит перенесён в «Не размещено». ':''}${dropped?'Сохранено вне слотов: '+dropped:'Структура ячеек обновлена.'}`);
 }
 function matchSlot(item,ref){const [kind,index]=ref.split(':');let n=(item?.name||'').toLowerCase(),c=(item?.category||'').toLowerCase();
- if(kind==='shield')return isEquippableShield(item);
+ if(kind==='shield')return canEquipShield(item);
  if(kind==='weapon')return /weapon|rifle|pistol|shotgun|launcher|gun|оруж/i.test(c) || /ferro|anvil|stitcher|venator|bettina|torrente|renegade/i.test(n);
  if(kind==='quick')return /grenade|medical|healing|heal|consum|utility|gadget|deploy|trap|шприц|гранат|лечени|применени/i.test(n+' '+c);
  if(kind==='aug'){
@@ -259,7 +261,7 @@ function slotMarkup(ref,label='',gear=false){const item=getRef(ref),sh=ref.start
  return `<button type="button" class="raid-special ${gear?'gearslot':''} ${wrong?'incompatible':''} ${selectedGearRef===ref?'selected-gear':''}" data-ref="${esc(ref)}" draggable="${item?'true':'false'}" title="${esc(wrong?'Не соответствует игровому типу слота · ':'')}${esc(item?.name||label)}"><span class="slotnum">${esc(label)}</span>${item?(item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:'<span class="empty-plus">◆</span>')+`<span class="name">${esc(item.nameRu||item.name)}</span><span class="qty">${item.qty}</span>`:'<span class="empty-plus">+</span>'}${wrong?'<span class="kind pillwarning">НЕ СООТВЕТСТВУЕТ</span>':''}</button>`;
 }
 function renderRaid(){if(area!=='raid')return;const a=augmentById(state.raidGear.augmentId),g=state.raidGear,chosen=catalogAugment(a);
- $('augmentSelector').innerHTML=(chosen?.image?`<img src="${esc(chosen.image)}" alt="" style="width:34px;height:34px;object-fit:contain">`:'')+`<span class="selector-label">${esc(a.name)}</span><span class="selector-caret">▾</span>`;
+ $('augmentSelector').innerHTML=(chosen?.image?`<img class="augment-icon" src="${esc(chosen.image)}" alt="" loading="lazy">`:'<span class="augment-fallback">▣</span>')+`<span class="name">${esc(a.name)}</span><span class="selector-caret" aria-hidden="true">▾</span>`;
  $('augmentDetails').textContent=`BACKPACK ${a.backpack} · QUICK USE ${a.quick} · SAFE POCKET ${a.safe} · AUGMENTED ${a.extraCount}${a.extraType?' ('+a.extraType+')':''} · Shield: ${a.shields.join('/')} ${a.integrated?' · '+a.integrated:''}`;
  $('raidWeight').textContent=`LIMIT ${a.weight} KG`;
  $('raidShield').innerHTML=slotMarkup('shield:0','SHIELD',true);
@@ -277,18 +279,25 @@ function renderRaid(){if(area!=='raid')return;const a=augmentById(state.raidGear
 }
 // Only AUGMENT and SHIELD have inline dropdowns; no modal item picker.
 const EQUIPPABLE_SHIELD_NAMES=['Light Shield','Medium Shield','Heavy Shield'];
-function isEquippableShield(item){
- const name=String(item?.name||'').trim(),category=String(item?.category||'').trim();
- // Avoid matches such as Shield Recharger, Shield Battery, and weapon names containing "shield".
- if(/recharg|charg|battery|cell|capacitor|repair|ammo|rifle|pistol|gun|launcher|weapon|grenade|kit|booster|replenish/i.test(name))return false;
- return /^(light|medium|heavy)\s+shield(?:\s+(?:mk\.?\s*\d+|[ivx]+))?$/i.test(name)
-   || (/^shields?$/i.test(category) && /\bshield\b/i.test(name));
+function shieldTier(item){
+ const match=String(item?.name||'').trim().match(/^(Light|Medium|Heavy)\s+Shield$/i);
+ return match?match[1][0].toUpperCase()+match[1].slice(1).toLowerCase():null;
+}
+function isEquippableShield(item){return Boolean(shieldTier(item))}
+function canEquipShield(item,augmentId=state.raidGear?.augmentId){
+ if(!item)return true;
+ const tier=shieldTier(item);
+ return Boolean(tier && augmentById(augmentId).shields.includes(tier));
 }
 function availableShields(){
- const matching=catalog.filter(isEquippableShield),byName=new Map();
- for(const x of matching){const key=x.name.trim().toLowerCase();if(!byName.has(key))byName.set(key,x)}
- for(const name of EQUIPPABLE_SHIELD_NAMES){if(!byName.has(name.toLowerCase()))byName.set(name.toLowerCase(),{id:'builtin:shield:'+name.toLowerCase().replace(/\s+/g,'-'),name,nameRu:'',category:'Shield',rarity:'',image:'',source:'builtin',stackMax:1,value:0});}
- return [...byName.values()].sort((a,b)=>{const ai=EQUIPPABLE_SHIELD_NAMES.findIndex(n=>n.toLowerCase()===a.name.toLowerCase()),bi=EQUIPPABLE_SHIELD_NAMES.findIndex(n=>n.toLowerCase()===b.name.toLowerCase());return (ai<0?100:ai)-(bi<0?100:bi)||a.name.localeCompare(b.name)});
+ const byName=new Map();
+ for(const x of catalog.filter(isEquippableShield)){
+  const key=x.name.trim().toLowerCase();if(!byName.has(key))byName.set(key,x);
+ }
+ return EQUIPPABLE_SHIELD_NAMES.map(name=>byName.get(name.toLowerCase())||{
+  id:'builtin:shield:'+name.toLowerCase().replace(/\s+/g,'-'),name,nameRu:'',
+  category:'Shield',rarity:'',image:'',source:'builtin',stackMax:1,value:0
+ });
 }
 function closeGearDropdown(){openGearDropdown='';for(const id of ['augment','shield']){$(id+'Dropdown').hidden=true;$(id==='augment'?'augmentSelector':'raidShield').querySelector('[data-ref]')?.setAttribute('aria-expanded','false')} $('augmentSelector').setAttribute('aria-expanded','false');$('raidShield').querySelector('[data-ref]')?.setAttribute('aria-expanded','false');}
 function openDropdown(kind){if(area!=='raid')return;
@@ -303,13 +312,19 @@ function renderAugmentOptions(){const query=$('augmentFilter').value.trim().toLo
  $('augmentOptions').innerHTML=rows.map(a=>{const item=catalogAugment(a),current=a.id===state.raidGear.augmentId;
   return `<button type="button" role="option" aria-selected="${current}" class="dropdown-option ${current?'is-current':''}" data-choose-augment="${esc(a.id)}">${item?.image?`<img src="${esc(item.image)}" alt="">`:'<span class="dropdown-icon">▣</span>'}<span class="dropdown-option-label"><b>${esc(a.name)}</b><small>BACKPACK ${a.backpack} · QUICK ${a.quick} · SAFE ${a.safe}${a.extraCount?' · BONUS '+a.extraCount:''}</small></span>${current?'✓':''}</button>`}).join('')||'<p class="dropdown-empty">Аугменты не найдены</p>';
 }
-function renderShieldOptions(){const query=$('shieldFilter').value.trim().toLocaleLowerCase(),current=state.raidGear.shield;
- const rows=availableShields().filter(x=>[x.name,x.nameRu].join(' ').toLocaleLowerCase().includes(query));
+function renderShieldOptions(){
+ const query=$('shieldFilter').value.trim().toLocaleLowerCase(),current=state.raidGear.shield;
+ const rows=availableShields().filter(x=>canEquipShield(x)&&[x.name,x.nameRu].join(' ').toLocaleLowerCase().includes(query));
  const remove=!query&&current?'<button class="dropdown-option" type="button" data-clear-shield="true"><span class="dropdown-icon">×</span><span class="dropdown-option-label"><b>Снять щит</b><small>Очистить слот SHIELD</small></span></button>':'';
- $('shieldOptions').innerHTML=remove+rows.map(x=>{const selected=current?.name===x.name,tier=x.name.match(/^(Light|Medium|Heavy)\s+Shield\b/i)?.[1]||'',compatible=!tier||augmentById(state.raidGear.augmentId).shields.includes(tier);
- return `<button type="button" role="option" aria-selected="${selected}" class="dropdown-option ${selected?'is-current':''}" data-choose-shield="${esc(x.id)}">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span class="dropdown-icon">⬡</span>'}<span class="dropdown-option-label"><b>${esc(x.nameRu||x.name)}</b><small>${compatible?'Shield · подходит для AUGMENT':'Shield · ⚠ несовместим с AUGMENT'}</small></span>${selected?'✓':''}</button>`}).join('')||(!remove?'<p class="dropdown-empty">Подходящих щитов нет</p>':'');
+ $('shieldOptions').innerHTML=remove+rows.map(x=>{
+  const selected=current?.name===x.name;
+  return `<button type="button" role="option" aria-selected="${selected}" class="dropdown-option ${selected?'is-current':''}" data-choose-shield="${esc(x.id)}">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span class="dropdown-icon">⬡</span>'}<span class="dropdown-option-label"><b>${esc(x.nameRu||x.name)}</b><small>Подходит для выбранного AUGMENT</small></span>${selected?'✓':''}</button>`;
+ }).join('')||(!remove?'<p class="dropdown-empty">Для этого аугмента подходящих щитов нет</p>':'');
 }
-function setShield(item){state.raidGear.shield=normSlot({...item,qty:1});selectedGearRef='';closeGearDropdown();persist();renderAll();}
+function setShield(item){
+ if(!canEquipShield(item)){toast('Этот щит не поддерживается выбранным AUGMENT');return false}
+ state.raidGear.shield=normSlot({...item,qty:1});selectedGearRef='';closeGearDropdown();persist();renderAll();return true;
+}
 $('augmentSelector').addEventListener('click',()=>openDropdown('augment'));
 $('augmentFilter').addEventListener('input',renderAugmentOptions);
 $('shieldFilter').addEventListener('input',renderShieldOptions);
@@ -323,12 +338,14 @@ document.addEventListener('click',e=>{if(!openGearDropdown)return;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openGearDropdown){closeGearDropdown();e.stopPropagation()}});
 function putCatalogRef(id,ref){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');
  if(ref==='augment'){const a=canonicalAugment(item.name);if(a)layoutAugment(a.id);else toast('Этот предмет не является известным аугментом');return}
- putRef(ref,normSlot({...item,qty:1}));compactOverflow();persist();renderAll();
+ if(ref==='shield:0'&&!canEquipShield(item)){toast('Этот щит не поддерживается выбранным AUGMENT');return}
+  putRef(ref,normSlot({...item,qty:1}));compactOverflow();persist();renderAll();
 }
 function moveRef(from,to){if(from===to)return;if(from.startsWith('overflow')&&to.startsWith('overflow'))return;
  const a=getRef(from),b=getRef(to);if(!a)return;
  if(to==='augment'){const aug=canonicalAugment(a.name);if(aug){layoutAugment(aug.id)}else toast('На этот слот требуется аугмент');return}
- putRef(to,a);putRef(from,b);compactOverflow();persist();renderAll();
+ if((to==='shield:0'&&!canEquipShield(a))||(from==='shield:0'&&!canEquipShield(b))){toast('Слот SHIELD принимает только совместимые с AUGMENT щиты');return}
+  putRef(to,a);putRef(from,b);compactOverflow();persist();renderAll();
 }
 $('raidLayout').addEventListener('click',e=>{
  const b=e.target.closest('[data-ref]');if(!b)return;
