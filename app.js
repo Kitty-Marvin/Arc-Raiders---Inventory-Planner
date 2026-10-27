@@ -207,6 +207,51 @@ $('resourceHistory').addEventListener('click',e=>{
  $('resourceSearch').focus();
 });
 
+
+let actionResolve=null;
+function finishAction(value){
+ if(!actionResolve)return;
+ const resolve=actionResolve;actionResolve=null;
+ $('actionOverlay').hidden=true;
+ resolve(value);
+}
+function siteConfirm(message,title='Подтвердить действие'){
+ return new Promise(resolve=>{
+  if(actionResolve)finishAction(false);
+  actionResolve=resolve;
+  $('actionTitle').textContent=title;
+  $('actionMessage').textContent=message;
+  $('actionInput').hidden=true;$('actionInputLabel').hidden=true;
+  $('actionConfirm').classList.remove('danger-confirm');
+  $('actionConfirm').firstChild.textContent='Подтвердить ';
+  $('actionOverlay').hidden=false;
+  $('actionConfirm').focus();
+ });
+}
+function sitePrompt(message,defaultValue=''){
+ return new Promise(resolve=>{
+  if(actionResolve)finishAction(null);
+  actionResolve=resolve;
+  $('actionTitle').textContent='Введите название';
+  $('actionMessage').textContent=message;
+  $('actionInput').hidden=false;$('actionInputLabel').hidden=false;
+  $('actionInput').value=defaultValue;
+  $('actionConfirm').firstChild.textContent='Сохранить ';
+  $('actionOverlay').hidden=false;$('actionInput').focus();$('actionInput').select();
+ });
+}
+$('actionForm').addEventListener('submit',e=>{
+ e.preventDefault();
+ finishAction($('actionInput').hidden?true:$('actionInput').value);
+});
+$('actionCancel').addEventListener('click',()=>finishAction($('actionInput').hidden?false:null));
+$('actionOverlay').addEventListener('click',e=>{
+ if(e.target===$('actionOverlay'))finishAction($('actionInput').hidden?false:null);
+});
+window.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&!$('actionOverlay').hidden){e.preventDefault();finishAction($('actionInput').hidden?false:null)}
+});
+
 function setStatus(s){$('saveStatus').textContent=s}
 function message(err){const code=err?.code||''; const messages={
  'auth/invalid-credential':'Неверный email или пароль.','auth/invalid-email':'Неверный формат email.',
@@ -235,7 +280,7 @@ async function startCloud(u){stopCloud();const epoch=sessionToken;user=u;mode='c
   else {
    remoteRevision=0;
    const localHasChanges=state.slots.some(Boolean)||builds.length>0;
-   uploadLocal=localHasChanges && confirm('В облаке пока нет сохранений. Перенести сюда текущий локальный инвентарь и сборки?');
+   uploadLocal=localHasChanges && await siteConfirm('В облаке пока нет сохранений. Перенести сюда текущий локальный инвентарь и сборки?');
    if(!uploadLocal){state=initial(area);builds=[];rememberArea();saveLocal();renderAll()}
   }
   ready=true;setStatus('Синхронизировано · версия '+remoteRevision);
@@ -284,7 +329,7 @@ async function saveCloud(){clearTimeout(saveTimer);if(mode!=='cloud'||!ready||sa
 async function refreshCloud(){if(mode==='cloud'&&!ready&&auth?.currentUser){await startCloud(auth.currentUser);return}
  if(mode==='demo'){toast('Демо работает только в этом браузере');return}
  if(!ready||!workspace)return toast('Нужно войти');
- if(dirty>saved){if(!confirm('Есть несохранённые изменения. Скачать их резервную копию JSON и загрузить облачную версию?'))return;downloadJSON({version:2,state:serializeState(),builds},'arc-unsaved-backup.json');}
+ if(dirty>saved){if(!await siteConfirm('Есть несохранённые изменения. Скачать их резервную копию JSON и загрузить облачную версию?'))return;downloadJSON({version:2,state:serializeState(),builds},'arc-unsaved-backup.json');}
  try{const snap=await getDocFromServer(workspace);if(snap.exists())applyRemote(snap.data(),Number(snap.data().revision)||0,true);else{applyRemote({state:initial(area),builds:[]},0);}
  }catch(err){toast('Не удалось загрузить: '+message(err))}
 }
@@ -370,7 +415,7 @@ $('loginForm').addEventListener('submit',async e=>{
  }finally{loginSubmitting=false;btn.disabled=false}
 });
 $('demoMode').addEventListener('click',async()=>{if(auth?.currentUser)await signOut(auth);demoLogin()});
-$('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!confirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
+$('logoutBtn').addEventListener('click',async()=>{if(mode==='cloud'&&dirty>saved&&!await siteConfirm('Есть несохранённые изменения. Сначала экспортируйте JSON. Всё равно выйти?'))return;
  if(mode==='cloud'&&auth){allowCloudLogin=false;await signOut(auth);demoLogin()}else demoLogin()
 });
 $('syncRefresh').addEventListener('click',refreshCloud);
@@ -634,7 +679,7 @@ function saveExistingPlanChanges(){
  builds[i]={...builds[i],...serializeState()};
  persist();renderSaves();toast('Сохранены изменения: '+name);
 }
-function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-rename="${i}" class="small renameaction" title="Переименовать план" aria-label="Переименовать ${esc(b.name)}">✎</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
+function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem" data-plan-index="${i}"><span class="plan-drag-handle" draggable="true" title="Перетащи для изменения порядка" aria-label="Переместить план">⠿</span><button data-load="${i}" class="small savename ${activePlanNames[area]===b.name?'active-plan':''}" title="Открыть сборку">${esc(b.name)}</button><button data-rename="${i}" class="small renameaction" title="Переименовать план" aria-label="Переименовать ${esc(b.name)}">✎</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>';updatePlanControls()}
 function renderAreaUi(){
  const stash=area==='stash';
  const plansPanel=$('plansPanel');
@@ -748,13 +793,13 @@ function syncCatalogMetadata(){
 }
 function firstEmpty(){return state.slots.findIndex(s=>!s)}
 function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(area==='stash'&&!isStashItem(item))return toast('Этот предмет не хранится в STASH');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');const qty=$('singleAdd').checked?1:Math.max(1,Number(item.stackMax)||1);state.slots[target]={...normSlot({...item,qty}),qty};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
-function updateCapacity(input){if(area==='raid')return;const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!confirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
+async function updateCapacity(input){if(area==='raid')return;const n=Math.max(1,Math.min(area==='stash'?STASH_MAX:RAID_MAX,parseInt(input)||1));if(n<state.capacity&&state.slots.slice(n).some(Boolean)&&!await siteConfirm('Удалить предметы из обрезаемых ячеек?')){$('capacity').value=state.capacity;return}
  state.slots=state.slots.slice(0,n);while(state.slots.length<n)state.slots.push(null);state.capacity=n;if(state.selectedSlot>=n)state.selectedSlot=null;persist();renderGrid()}
 function openEditor(i){const item=typeof i==='string'?getRef(i):state.slots[i];if(!item)return;editingIndex=i;$('editTitle').textContent=item.nameRu||item.name;$('editImage').src=item.image||'';$('editImage').style.display=item.image?'block':'none';$('editInfo').textContent=(item.category||'Предмет')+(item.rarity?' · '+item.rarity:'');$('editQty').value=item.qty;$('editQty').max=item.stackMax||9999;$('stackHint').textContent=item.stackMax?'Максимальный стак по источнику: '+item.stackMax:'Размер стака не указан. Количество меняется вручную.';$('editOverlay').hidden=false;$('editQty').focus()}
 function closeEditor(){editingIndex=null;$('editOverlay').hidden=true}
 function validQty(){const item=typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex];return Math.max(1,Math.min(item?.stackMax||9999,parseInt($('editQty').value)||1))}
 function applyQty(){if(editingIndex===null)return;(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]).qty=validQty();persist();renderGrid();renderRaid();closeEditor()}
-function saveBuild(){const name=$('buildName').value.trim()||'Сборка '+new Date().toLocaleString('ru-RU');if(builds.find(b=>b.name===name)?.shareId)return toast('Перед заменой опубликованной сборки отзовите её ссылку.');if(builds.some(b=>b.name===name)&&!confirm('Заменить сборку с этим именем?'))return;
+async function saveBuild(){const name=$('buildName').value.trim()||'Сборка '+new Date().toLocaleString('ru-RU');if(builds.find(b=>b.name===name)?.shareId)return toast('Перед заменой опубликованной сборки отзовите её ссылку.');if(builds.some(b=>b.name===name)&&!await siteConfirm('Заменить сборку с этим именем?'))return;
  builds=builds.filter(b=>b.name!==name);builds.unshift({name,created:new Date().toISOString(),...JSON.parse(JSON.stringify(serializeState()))});builds=builds.slice(0,30);activePlanNames[area]=name;persist();$('buildName').value='';renderSaves();toast('Сборка сохранена: '+name)}
 function applySaved(x,name=null){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');activePlanNames[area]=name;state=normState(x);closeEditor();persist();renderAll()}
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
@@ -844,14 +889,57 @@ $('search').addEventListener('input',()=>{shown=80;renderCatalog()});$('category
 });$('source').addEventListener('change',fetchCatalog);$('refreshBtn').addEventListener('click',fetchCatalog);$('showMore').addEventListener('click',()=>{shown+=80;renderCatalog()});
 $('editQty').addEventListener('keydown',e=>{if(e.key==='Enter')applyQty();if(e.key==='Escape')closeEditor()});$('qtyMinus').addEventListener('click',()=>{$('editQty').value=Math.max(1,validQty()-1)});$('qtyPlus').addEventListener('click',()=>{$('editQty').value=Math.min(Number($('editQty').max),validQty()+1)});$('applyEdit').addEventListener('click',applyQty);$('closeEdit').addEventListener('click',closeEditor);$('editOverlay').addEventListener('click',e=>{if(e.target.id==='editOverlay')closeEditor()});window.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
 $('removeItem').addEventListener('click',()=>{if(editingIndex===null)return;if(typeof editingIndex==='string'){putRef(editingIndex,null);compactOverflow()}else state.slots[editingIndex]=null;persist();renderGrid();renderRaid();closeEditor()});$('duplicateItem').addEventListener('click',()=>{const ix=firstEmpty();if(ix<0)return toast('Нет свободных ячеек');state.slots[ix]={...(typeof editingIndex==='string'?getRef(editingIndex):state.slots[editingIndex]),qty:validQty()};state.selectedSlot=ix;persist();renderGrid();closeEditor()});
-$('clearBtn').addEventListener('click',()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&confirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
+$('clearBtn').addEventListener('click',async()=>{if((state.slots.some(Boolean)||(area==='raid'&&(state.raidGear.overflow.length||state.raidGear.quick.some(Boolean)||state.raidGear.safe.some(Boolean)||state.raidGear.augmented.some(Boolean)||state.raidGear.weapons.some(Boolean)||state.raidGear.shield)))&&await siteConfirm(area==='stash'?'Очистить виртуальный склад?':'Очистить содержимое рейдовой сборки?')){state.slots=Array(state.capacity).fill(null);if(area==='raid')state.raidGear=createGear(state.raidGear.augmentId);state.selectedSlot=null;persist();renderAll()}});
 $('saveBuild').addEventListener('click',saveBuild);
 $('saveChanges').addEventListener('click',saveExistingPlanChanges);
+let draggingPlanIndex=null;
+$('savedList').addEventListener('dragstart',e=>{
+ const handle=e.target.closest('.plan-drag-handle');
+ if(!handle)return;
+ const plan=handle.closest('[data-plan-index]');
+ if(!plan)return;
+ draggingPlanIndex=Number(plan.dataset.planIndex);
+ e.dataTransfer.effectAllowed='move';
+ e.dataTransfer.setData('text/plain',String(draggingPlanIndex));
+ plan.classList.add('plan-dragging');
+});
+$('savedList').addEventListener('dragover',e=>{
+ if(draggingPlanIndex===null)return;
+ const target=e.target.closest('[data-plan-index]');
+ if(!target)return;
+ e.preventDefault();e.dataTransfer.dropEffect='move';
+ for(const node of $('savedList').querySelectorAll('[data-plan-index]'))
+  node.classList.remove('plan-drop-before','plan-drop-after');
+ const bounds=target.getBoundingClientRect(),after=e.clientX>bounds.left+bounds.width/2;
+ target.classList.add(after?'plan-drop-after':'plan-drop-before');
+});
+function resetPlanDrag(){
+ draggingPlanIndex=null;
+ for(const node of $('savedList').querySelectorAll('[data-plan-index]'))
+  node.classList.remove('plan-dragging','plan-drop-before','plan-drop-after');
+}
+$('savedList').addEventListener('drop',e=>{
+ if(draggingPlanIndex===null)return;
+ const target=e.target.closest('[data-plan-index]');
+ if(!target){resetPlanDrag();return}
+ e.preventDefault();
+ const from=draggingPlanIndex,to=Number(target.dataset.planIndex);
+ const bounds=target.getBoundingClientRect(),after=e.clientX>bounds.left+bounds.width/2;
+ const destination=to+(after?1:0);
+ resetPlanDrag();
+ if(from<0||from>=builds.length)return;
+ const reordered=[...builds],plan=reordered.splice(from,1)[0],place=destination>from?destination-1:destination;
+ if(place===from)return;
+ reordered.splice(Math.max(0,Math.min(reordered.length,place)),0,plan);
+ builds=reordered;persist();renderSaves();toast('Порядок планов сохранён');
+});
+$('savedList').addEventListener('dragend',resetPlanDrag);
+document.addEventListener('dragend',resetPlanDrag);
 $('savedList').addEventListener('click',async e=>{
  const del=e.target.closest('[data-delete]'),load=e.target.closest('[data-load]'),share=e.target.closest('[data-share]'),revoke=e.target.closest('[data-revoke]'),rename=e.target.closest('[data-rename]');
  if(rename){
   const idx=Number(rename.dataset.rename),plan=builds[idx];if(!plan)return;
-  const answer=window.prompt('Новое название плана:',plan.name);if(answer===null)return;
+  const answer=await sitePrompt('Новое название плана:',plan.name);if(answer===null)return;
   const next=answer.trim();
   if(!next||next.length>60)return toast('Название должно содержать от 1 до 60 символов');
   if(next===plan.name)return;
@@ -860,8 +948,8 @@ $('savedList').addEventListener('click',async e=>{
   if(activePlanNames[area]===prev)activePlanNames[area]=next;
   persist();renderSaves();toast('План переименован: '+next);
  }else if(share){await publishBuild(Number(share.dataset.share))}
- else if(revoke){const b=builds[Number(revoke.dataset.revoke)];if(b&&confirm('Отозвать публичную ссылку на «'+b.name+'»? Друг больше не сможет открыть её.'))await revokeBuild(b)}
- else if(del){const i=Number(del.dataset.delete),b=builds[i];if(!b||!confirm('Удалить сборку «'+b.name+'»?'))return;
+ else if(revoke){const b=builds[Number(revoke.dataset.revoke)];if(b&&await siteConfirm('Отозвать публичную ссылку на «'+b.name+'»? Друг больше не сможет открыть её.'))await revokeBuild(b)}
+ else if(del){const i=Number(del.dataset.delete),b=builds[i];if(!b||!await siteConfirm('Удалить сборку «'+b.name+'»?'))return;
   if(b.shareId&&!(await revokeBuild(b,true)))return;
   const index=builds.indexOf(b);if(index>=0){builds.splice(index,1);if(activePlanNames[area]===b.name)activePlanNames[area]=null;persist();renderSaves()}
  }else if(load){const b=builds[Number(load.dataset.load)];if(!b)return;applySaved(b,b.name);toast('Открыта сборка: '+b.name)}
@@ -885,7 +973,7 @@ function exportStashPDF(){
  const details=items.map(({item,index})=>'<section class="detail" id="'+unique+index+'"><b>Ячейка '+(index+1)+'</b>'+
  '<h3>'+escapeHTML(item.name)+'</h3>'+(item.nameRu?'<p>'+escapeHTML(item.nameRu)+'</p>':'')+
  '<p>Количество: '+Number(item.qty||1)+'</p><a href="#top">↑ К складу</a></section>').join('');
- const css="\n@page{size:A4 landscape;margin:12mm}\n:root{color-scheme:dark}\n*{box-sizing:border-box}\nhtml,body{background:#0c151d!important;color:#e6edf2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}\nbody{margin:0;font:12px/1.4 Arial,'Segoe UI',sans-serif}\nheader{background:#192a34;border:1px solid #4c5c65;border-left:4px solid #efb75f;padding:14px 17px;margin-bottom:12px;break-after:avoid}\n.brand{font-size:10px;letter-spacing:1.5px;color:#edb76b;font-weight:800}\nh1{font-size:21px;margin:5px 0 6px;font-weight:800;letter-spacing:.6px}\n.muted{color:#a8bbc7;font-size:11px}\n.grid{display:grid;grid-template-columns:repeat(COL_COUNT,minmax(0,1fr));gap:4px}\n.cell{height:62px;position:relative;display:flex;align-items:center;justify-content:center;border:1px solid #516572;border-radius:5px;text-decoration:none;color:#e8eef3;break-inside:avoid;overflow:hidden;background:#1e2c36}\n.cell.filled{border:2px solid #b98f54;background:radial-gradient(ellipse at 10% 100%,#3d3831,#1e2c36 70%)}\n.cell.r-common{border-color:#9faab2}.cell.r-uncommon{border-color:#5fb789}.cell.r-rare{border-color:#5bace1}\n.cell.r-epic{border-color:#bb7ed0}.cell.r-legendary{border-color:#ecb868}.cell.r-amplified{border-color:#df936c}\n.cell small{position:absolute;left:4px;top:2px;font-size:8px;color:#b6c3cb}\n.cell img{max-width:85%;max-height:75%;object-fit:contain}\n.cell b{position:absolute;bottom:2px;right:4px;font-size:11px;color:#fff}\n.plus,.cube{font-size:19px;color:#748a96}\n#details{break-before:page;padding:6px 2px}\n#details h2{color:#edb86d;font-size:18px;border-bottom:1px solid #5e6c75;padding-bottom:8px}\n.detail{break-inside:avoid;background:#1b2b35;border-left:3px solid #dfab60;padding:10px 12px;margin:0 0 8px}\n.detail b{color:#f1c57f}.detail h3{font-size:14px;margin:5px 0;color:#fff}\n.detail p{color:#c3d1d9;margin:4px 0}.detail a{color:#edb86d;font-size:10px}\n@media screen{body{max-width:1200px;margin:15px auto}.cell{height:80px}}\n@media print{body{margin:0}.cell{height:61px}}\n".replace('COL_COUNT',String(columns));
+ const css="\n@page{size:A4 landscape;margin:12mm}\n:root{color-scheme:dark}\n*{box-sizing:border-box}\nhtml,body{background:#0c151d!important;color:#e6edf2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}\nbody{margin:0;font:12px/1.4 Arial,'Segoe UI',sans-serif}\nheader{background:#192a34;border:1px solid #4c5c65;border-left:4px solid #efb75f;padding:14px 17px;margin-bottom:12px;break-after:avoid}\n.brand{font-size:10px;letter-spacing:1.5px;color:#edb76b;font-weight:800}\nh1{font-size:21px;margin:5px 0 6px;font-weight:800;letter-spacing:.6px}\n.muted{color:#a8bbc7;font-size:11px}\n.grid{display:grid;grid-template-columns:repeat(COL_COUNT,minmax(0,1fr));gap:4px}\n.cell{aspect-ratio:1 / 1;height:auto;position:relative;display:flex;align-items:center;justify-content:center;border:1px solid #516572;border-radius:5px;text-decoration:none;color:#e8eef3;break-inside:avoid;overflow:hidden;background:#1e2c36}\n.cell.filled{border:2px solid #b98f54;background:radial-gradient(ellipse at 10% 100%,#3d3831,#1e2c36 70%)}\n.cell.r-common{border-color:#9faab2}.cell.r-uncommon{border-color:#5fb789}.cell.r-rare{border-color:#5bace1}\n.cell.r-epic{border-color:#bb7ed0}.cell.r-legendary{border-color:#ecb868}.cell.r-amplified{border-color:#df936c}\n.cell small{position:absolute;left:4px;top:2px;font-size:8px;color:#b6c3cb}\n.cell img{max-width:85%;max-height:75%;object-fit:contain}\n.cell b{position:absolute;bottom:2px;right:4px;font-size:11px;color:#fff}\n.plus,.cube{font-size:19px;color:#748a96}\n#details{break-before:page;padding:6px 2px}\n#details h2{color:#edb86d;font-size:18px;border-bottom:1px solid #5e6c75;padding-bottom:8px}\n.detail{break-inside:avoid;background:#1b2b35;border-left:3px solid #dfab60;padding:10px 12px;margin:0 0 8px}\n.detail b{color:#f1c57f}.detail h3{font-size:14px;margin:5px 0;color:#fff}\n.detail p{color:#c3d1d9;margin:4px 0}.detail a{color:#edb86d;font-size:10px}\n@media screen{body{max-width:1200px;margin:15px auto}}\n@media print{body{margin:0}.cell{height:auto;aspect-ratio:1 / 1}}\n".replace('COL_COUNT',String(columns));
  const html='<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>'+escapeHTML(title)+' — RAIDER’S UTILITY</title><style>'+css+'</style></head><body>'+
  '<header id="top"><div class="brand">KITTY_MARVINS · RAIDER’S UTILITY</div><h1>'+escapeHTML(title)+'</h1><div class="muted">STASH · '+state.capacity+' ячеек · '+items.length+' занято · '+(state.capacity-items.length)+' свободно</div></header>'+
  '<div class="grid">'+cards+'</div><article id="details"><h2>ПРЕДМЕТЫ</h2><p class="muted">Нажми на занятую ячейку в PDF, чтобы перейти к названию предмета.</p>'+details+'</article></body></html>';
@@ -903,11 +991,11 @@ function exportStashPDF(){
 $('exportPdf').addEventListener('click',exportStashPDF);
 
 $('exportBtn').addEventListener('click',()=>downloadJSON({version:2,area,state:serializeState(),builds},area==='stash'?'arc-stash-plans.json':'arc-raid-builds.json'));
-$('importBtn').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.area&&x.area!==area){toast('Этот JSON относится к разделу «'+(x.area==='stash'?'Склад':'Рейд')+'». Переключитесь в него и повторите импорт.');return}if(x.version===2&&x.state&&Array.isArray(x.builds)){if(!confirm('Заменить все сохранённые сборки из JSON?'))return;builds=normBuilds(x.builds);applySaved(x.state);toast('Все сборки импортированы')}else{applySaved(x);toast('Инвентарь импортирован')}}catch(err){toast('Ошибка импорта: '+err.message)}finally{e.target.value=''}});
+$('importBtn').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.area&&x.area!==area){toast('Этот JSON относится к разделу «'+(x.area==='stash'?'Склад':'Рейд')+'». Переключитесь в него и повторите импорт.');return}if(x.version===2&&x.state&&Array.isArray(x.builds)){if(!await siteConfirm('Заменить все сохранённые сборки из JSON?'))return;builds=normBuilds(x.builds);applySaved(x.state);toast('Все сборки импортированы')}else{applySaved(x);toast('Инвентарь импортирован')}}catch(err){toast('Ошибка импорта: '+err.message)}finally{e.target.value=''}});
 
 // --- Sharing only explicit snapshots. Every private workspace stays behind owner rules. ---
 function shareUrl(id){const url=new URL(location.origin+location.pathname);url.searchParams.set('share',id);return url.toString()}
-async function copyText(s){try{await navigator.clipboard.writeText(s);toast('Ссылка скопирована')}catch{window.prompt('Скопируйте ссылку:',s)}}
+async function copyText(s){try{await navigator.clipboard.writeText(s);toast('Ссылка скопирована')}catch{sitePrompt('Скопируйте ссылку:',s)}}
 function revealShareLink(id){$('shareLinkInput').value=shareUrl(id);$('shareLinkBox').hidden=false;$('shareLinkInput').focus();$('shareLinkInput').select();}
 $('copyShareLink').addEventListener('click',()=>copyText($('shareLinkInput').value));
 $('closeShareLink').addEventListener('click',()=>{$('shareLinkBox').hidden=true});
@@ -954,7 +1042,7 @@ async function openIncomingShare(id){
 $('importShared').addEventListener('click',async()=>{
  if(!sharedPreview)return;
  if(mode==='cloud'&&!ready){toast('Подождите загрузки ваших сохранений');return}
- if(state.slots.some(Boolean)&&!confirm('Заменить текущие ячейки опубликованной сборкой? Сохранённые сборки останутся без изменений.'))return;
+ if(state.slots.some(Boolean)&&!await siteConfirm('Заменить текущие ячейки опубликованной сборкой? Сохранённые сборки останутся без изменений.'))return;
  if(mode!=='cloud'&&mode!=='demo')demoLogin();
  if(area!==sharedPreview.area && !(await switchArea(sharedPreview.area)))return;
  applySaved(sharedPreview);
