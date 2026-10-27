@@ -877,7 +877,7 @@ function exportStashPDF(){
  const cards=state.slots.map((item,i)=>{
   const id=unique+i;
   const isFilled=Boolean(item);
-  return '<a class="cell '+(isFilled?'filled':'empty')+'" '+(isFilled?'href="#'+id+'"':'')+' title="'+escapeHTML(item?.name||'Свободно')+'">'+
+  return '<a class="cell '+(isFilled?'filled r-'+esc(isBlueprint(item)?'':String(item?.rarity||'').toLowerCase()):'empty')+'" '+(isFilled?'href="#'+id+'"':'')+' title="'+escapeHTML(item?.name||'Свободно')+'">'+
    '<small>'+(i+1)+'</small>'+
    (isFilled?(validImage(item.image)?'<img src="'+escapeHTML(item.image)+'" alt="">':'<span class="cube">◇</span>')+'<b>×'+Number(item.qty||1)+'</b>':'<span class="plus">+</span>')+
    '</a>';
@@ -885,8 +885,10 @@ function exportStashPDF(){
  const details=items.map(({item,index})=>'<section class="detail" id="'+unique+index+'"><b>Ячейка '+(index+1)+'</b>'+
  '<h3>'+escapeHTML(item.name)+'</h3>'+(item.nameRu?'<p>'+escapeHTML(item.nameRu)+'</p>':'')+
  '<p>Количество: '+Number(item.qty||1)+'</p><a href="#top">↑ К складу</a></section>').join('');
- const html='<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>'+escapeHTML(title)+' — RAIDER’S UTILITY</title>'+
- '<style>@page{size:A4 landscape;margin:13mm}body{font:12px Arial,sans-serif;color:#14212a}h1{font-size:20px;margin:0 0 4px}header{margin-bottom:10px}.muted{color:#526470}.grid{display:grid;grid-template-columns:repeat('+columns+',1fr);gap:3px}.cell{height:59px;border:1px solid #a4b5c0;position:relative;display:flex;align-items:center;justify-content:center;text-decoration:none;color:#182b37;break-inside:avoid}.cell small{position:absolute;top:2px;left:4px;color:#74858d;font-size:9px}.cell img{max-width:85%;max-height:43px;object-fit:contain}.cell b{position:absolute;bottom:2px;right:3px;font-size:10px}.cell.filled{background:#e8f0f5}.plus{color:#a0b0b8}.detail{border-top:1px solid #cbd4da;break-inside:avoid;padding:7px 0;min-height:60px}.detail h3{margin:2px 0;font-size:15px}.detail p{margin:2px 0}.detail a{font-size:10px}#details{break-before:page}a{color:#216398}@media screen{body{max-width:1180px;margin:20px auto}.cell{height:80px}.cell img{max-height:65px}}@media print{.cell{height:55px}}</style></head><body><header id="top"><h1>'+escapeHTML(title)+'</h1><div class="muted">RAIDER’S UTILITY · '+state.capacity+' ячеек · '+items.length+' занято</div></header><div class="grid">'+cards+'</div><article id="details"><h2>Предметы</h2><p class="muted">Нажми на заполненную ячейку в PDF, чтобы перейти к названию предмета.</p>'+details+'</article></body></html>';
+ const css="\n@page{size:A4 landscape;margin:12mm}\n:root{color-scheme:dark}\n*{box-sizing:border-box}\nhtml,body{background:#0c151d!important;color:#e6edf2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}\nbody{margin:0;font:12px/1.4 Arial,'Segoe UI',sans-serif}\nheader{background:#192a34;border:1px solid #4c5c65;border-left:4px solid #efb75f;padding:14px 17px;margin-bottom:12px;break-after:avoid}\n.brand{font-size:10px;letter-spacing:1.5px;color:#edb76b;font-weight:800}\nh1{font-size:21px;margin:5px 0 6px;font-weight:800;letter-spacing:.6px}\n.muted{color:#a8bbc7;font-size:11px}\n.grid{display:grid;grid-template-columns:repeat(COL_COUNT,minmax(0,1fr));gap:4px}\n.cell{height:62px;position:relative;display:flex;align-items:center;justify-content:center;border:1px solid #516572;border-radius:5px;text-decoration:none;color:#e8eef3;break-inside:avoid;overflow:hidden;background:#1e2c36}\n.cell.filled{border:2px solid #b98f54;background:radial-gradient(ellipse at 10% 100%,#3d3831,#1e2c36 70%)}\n.cell.r-common{border-color:#9faab2}.cell.r-uncommon{border-color:#5fb789}.cell.r-rare{border-color:#5bace1}\n.cell.r-epic{border-color:#bb7ed0}.cell.r-legendary{border-color:#ecb868}.cell.r-amplified{border-color:#df936c}\n.cell small{position:absolute;left:4px;top:2px;font-size:8px;color:#b6c3cb}\n.cell img{max-width:85%;max-height:75%;object-fit:contain}\n.cell b{position:absolute;bottom:2px;right:4px;font-size:11px;color:#fff}\n.plus,.cube{font-size:19px;color:#748a96}\n#details{break-before:page;padding:6px 2px}\n#details h2{color:#edb86d;font-size:18px;border-bottom:1px solid #5e6c75;padding-bottom:8px}\n.detail{break-inside:avoid;background:#1b2b35;border-left:3px solid #dfab60;padding:10px 12px;margin:0 0 8px}\n.detail b{color:#f1c57f}.detail h3{font-size:14px;margin:5px 0;color:#fff}\n.detail p{color:#c3d1d9;margin:4px 0}.detail a{color:#edb86d;font-size:10px}\n@media screen{body{max-width:1200px;margin:15px auto}.cell{height:80px}}\n@media print{body{margin:0}.cell{height:61px}}\n".replace('COL_COUNT',String(columns));
+ const html='<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>'+escapeHTML(title)+' — RAIDER’S UTILITY</title><style>'+css+'</style></head><body>'+
+ '<header id="top"><div class="brand">KITTY_MARVINS · RAIDER’S UTILITY</div><h1>'+escapeHTML(title)+'</h1><div class="muted">STASH · '+state.capacity+' ячеек · '+items.length+' занято · '+(state.capacity-items.length)+' свободно</div></header>'+
+ '<div class="grid">'+cards+'</div><article id="details"><h2>ПРЕДМЕТЫ</h2><p class="muted">Нажми на занятую ячейку в PDF, чтобы перейти к названию предмета.</p>'+details+'</article></body></html>';
  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
  const url=URL.createObjectURL(blob);
  const printWindow=window.open(url,'_blank');
@@ -896,7 +898,7 @@ function exportStashPDF(){
    setTimeout(()=>{try{printWindow.focus();printWindow.print()}catch(e){console.warn('PDF print:',e)}},450);
  },{once:true});
  setTimeout(()=>URL.revokeObjectURL(url),120000);
- toast('В окне печати выбери «Сохранить как PDF»');
+ toast('В окне печати выбери «Сохранить как PDF» и включи «Фоновая графика»');
 }
 $('exportPdf').addEventListener('click',exportStashPDF);
 
