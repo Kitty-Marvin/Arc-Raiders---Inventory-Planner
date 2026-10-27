@@ -37,16 +37,8 @@ jobs:
       - name: Update cached ARC Raiders items (MetaForge / ARDB)
         run: python scripts/update_catalog.py --source all
         continue-on-error: true # old cache stays available if source is down
-      - name: Save refreshed catalogs to repository
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add catalog/metaforge.json catalog/ardb.json catalog/recipes.json
-          if ! git diff --cached --quiet; then
-            git commit -m 'Refresh ARC Raiders item cache'
-            git pull --rebase origin main
-            git push
-          fi
+      # Published catalog is built fresh on each run. Never push generated files from
+      # the deploy job: overlapping website edits caused non-fast-forward failures.
       - name: Prepare public site (omit scripts and rules)
         run: |
           mkdir -p public/catalog
