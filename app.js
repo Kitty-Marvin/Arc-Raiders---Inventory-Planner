@@ -51,6 +51,7 @@ let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=nu
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
+let selectedGearRef='', openGearDropdown='';
 const incomingShareId=new URLSearchParams(location.search).get('share');
 const configured = ['apiKey','authDomain','projectId','appId'].every(k => typeof firebaseConfig[k]==='string' && !/PASTE|YOUR_PROJECT|_HERE/.test(firebaseConfig[k]) && firebaseConfig[k].trim().length>5);
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -96,7 +97,7 @@ async function switchArea(next){
   if(dirty>saved&&!halted)await saveCloud();
   if(dirty>saved || halted){toast('Есть несохранённые изменения. Экспортируйте JSON или обновите данные перед переключением.');return false}
  }
- rememberArea();closeEditor();$('shareLinkBox').hidden=true;
+ rememberArea();closeEditor();closeGearDropdown();selectedGearRef='';$('shareLinkBox').hidden=true;
  area=next;loadArea();renderAll();
  if(mode==='cloud'&&auth?.currentUser)await startCloud(auth.currentUser);
  else if(mode==='demo')setStatus('Демо · сохранено только в браузере');
@@ -242,7 +243,7 @@ function layoutAugment(id){
  persist();renderAll();toast(`Выбран ${a.name}. ${dropped?'Неразмещённые предметы сохранены отдельно: '+dropped:'Структура ячеек обновлена.'}`);
 }
 function matchSlot(item,ref){const [kind,index]=ref.split(':');let n=(item?.name||'').toLowerCase(),c=(item?.category||'').toLowerCase();
- if(kind==='shield')return /shield|щит/i.test(n+' '+c);
+ if(kind==='shield')return isEquippableShield(item);
  if(kind==='weapon')return /weapon|rifle|pistol|shotgun|launcher|gun|оруж/i.test(c) || /ferro|anvil|stitcher|venator|bettina|torrente|renegade/i.test(n);
  if(kind==='quick')return /grenade|medical|healing|heal|consum|utility|gadget|deploy|trap|шприц|гранат|лечени|применени/i.test(n+' '+c);
  if(kind==='aug'){
@@ -254,14 +255,15 @@ function matchSlot(item,ref){const [kind,index]=ref.split(':');let n=(item?.name
  }
  return true;
 }
-function slotMarkup(ref,label='',gear=false){const item=getRef(ref),sh=ref.startsWith('shield')&&item?(['Light','Medium','Heavy'].find(t=>new RegExp(t,'i').test(item.name))||''):'';const wrong=item&&(!matchSlot(item,ref)||(sh&&!augmentById(state.raidGear.augmentId).shields.includes(sh)));
- return `<button type="button" class="raid-special ${gear?'gearslot':''} ${wrong?'incompatible':''}" data-ref="${esc(ref)}" draggable="${item?'true':'false'}" title="${esc(wrong?'Не соответствует игровому типу слота · ':'')}${esc(item?.name||label)}"><span class="slotnum">${esc(label)}</span>${item?(item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:'<span class="empty-plus">◆</span>')+`<span class="name">${esc(item.nameRu||item.name)}</span><span class="qty">${item.qty}</span>`:'<span class="empty-plus">+</span>'}${wrong?'<span class="kind pillwarning">НЕ СООТВЕТСТВУЕТ</span>':''}</button>`;
+function slotMarkup(ref,label='',gear=false){const item=getRef(ref),sh=ref.startsWith('shield')&&item?(item.name.match(/\b(Light|Medium|Heavy)\s+Shield\b/i)?.[1]||''):'';const wrong=item&&(!matchSlot(item,ref)||(sh&&!augmentById(state.raidGear.augmentId).shields.includes(sh)));
+ return `<button type="button" class="raid-special ${gear?'gearslot':''} ${wrong?'incompatible':''} ${selectedGearRef===ref?'selected-gear':''}" data-ref="${esc(ref)}" draggable="${item?'true':'false'}" title="${esc(wrong?'Не соответствует игровому типу слота · ':'')}${esc(item?.name||label)}"><span class="slotnum">${esc(label)}</span>${item?(item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:'<span class="empty-plus">◆</span>')+`<span class="name">${esc(item.nameRu||item.name)}</span><span class="qty">${item.qty}</span>`:'<span class="empty-plus">+</span>'}${wrong?'<span class="kind pillwarning">НЕ СООТВЕТСТВУЕТ</span>':''}</button>`;
 }
 function renderRaid(){if(area!=='raid')return;const a=augmentById(state.raidGear.augmentId),g=state.raidGear,chosen=catalogAugment(a);
- $('augmentSelector').innerHTML=(chosen?.image?`<img src="${esc(chosen.image)}" alt="" style="width:34px;height:34px;object-fit:contain;vertical-align:middle;margin-right:9px">`:'')+esc(a.name)+' ▾';
+ $('augmentSelector').innerHTML=(chosen?.image?`<img src="${esc(chosen.image)}" alt="" style="width:34px;height:34px;object-fit:contain">`:'')+`<span class="selector-label">${esc(a.name)}</span><span class="selector-caret">▾</span>`;
  $('augmentDetails').textContent=`BACKPACK ${a.backpack} · QUICK USE ${a.quick} · SAFE POCKET ${a.safe} · AUGMENTED ${a.extraCount}${a.extraType?' ('+a.extraType+')':''} · Shield: ${a.shields.join('/')} ${a.integrated?' · '+a.integrated:''}`;
  $('raidWeight').textContent=`LIMIT ${a.weight} KG`;
- $('raidGear').innerHTML=slotMarkup('shield:0','SHIELD',true)+slotMarkup('weapon:0','WEAPON 1',true)+slotMarkup('weapon:1','WEAPON 2',true);
+ $('raidShield').innerHTML=slotMarkup('shield:0','SHIELD',true);
+ $('raidGear').innerHTML=slotMarkup('weapon:0','WEAPON 1',true)+slotMarkup('weapon:1','WEAPON 2',true);
  $('raidQuick').innerHTML=g.quick.map((_,i)=>slotMarkup('quick:'+i,'QUICK '+(i+1))).join('');
  $('raidSafe').innerHTML=g.safe.map((_,i)=>slotMarkup('safe:'+i,'SAFE '+(i+1))).join('')||'<span class="hint">Нет защищённых карманов</span>';
  $('raidAugmented').innerHTML=g.augmented.map((_,i)=>slotMarkup('aug:'+i,(a.extraType||'BONUS').toUpperCase()+' '+(i+1))).join('') || (a.integrated?`<span class="hint">Встроено: ${esc(a.integrated)} (не занимает ячейку)</span>`:'<span class="hint">Нет специальных ячеек</span>');
@@ -273,17 +275,52 @@ function renderRaid(){if(area!=='raid')return;const a=augmentById(state.raidGear
  $('raidBagCount').textContent=state.slots.filter(Boolean).length+'/'+a.backpack;
  $('raidExtraTitle').textContent='AUGMENTED SLOTS '+(a.extraType?'· '+a.extraType.toUpperCase():'')+' '+g.augmented.filter(Boolean).length+'/'+a.extraCount;
 }
-let pickerRef='';
-function pickerOpen(ref){if(area!=='raid')return;pickerRef=ref;$('pickerSearch').value='';$('pickerTitle').textContent=ref==='augment'?'AUGMENT · Выбор рюкзака':ref.startsWith('shield')?'SHIELD · Выбор щита':ref.startsWith('weapon')?'WEAPON · Выбор оружия':ref.startsWith('quick')?'QUICK USE · Выбор предмета':ref.startsWith('safe')?'SAFE POCKET · Выбор предмета':ref.startsWith('aug')?'AUGMENTED SLOTS · '+augmentById(state.raidGear.augmentId).extraType:'Выбор предмета';
- $('pickerHint').textContent='Список фильтруется по типу ячейки. Перетаскиванием можно вручную разместить любой предмет.';
- $('pickerRemove').hidden=ref==='augment'||!getRef(ref);$('pickerEdit').hidden=ref==='augment'||!getRef(ref);$('pickerOverlay').hidden=false;renderPicker();$('pickerSearch').focus();
+// Only AUGMENT and SHIELD have inline dropdowns; no modal item picker.
+const EQUIPPABLE_SHIELD_NAMES=['Light Shield','Medium Shield','Heavy Shield'];
+function isEquippableShield(item){
+ const name=String(item?.name||'').trim(),category=String(item?.category||'').trim();
+ // Avoid matches such as Shield Recharger, Shield Battery, and weapon names containing "shield".
+ if(/recharg|charg|battery|cell|capacitor|repair|ammo|rifle|pistol|gun|launcher|weapon|grenade|kit|booster|replenish/i.test(name))return false;
+ return /^(light|medium|heavy)\s+shield(?:\s+(?:mk\.?\s*\d+|[ivx]+))?$/i.test(name)
+   || (/^shields?$/i.test(category) && /\bshield\b/i.test(name));
 }
-function renderPicker(){const q=$('pickerSearch').value.trim().toLowerCase();
- if(pickerRef==='augment'){$('pickerResults').innerHTML=AUGMENTS.filter(a=>a.name.toLowerCase().includes(q)).map(a=>{const item=catalogAugment(a);return `<button class="pickeritem" data-pick-augment="${a.id}">${item?.image?`<img src="${esc(item.image)}" alt="">`:'<span style="font-size:28px">▣</span>'}<span><b>${esc(a.name)}</b><small>${a.backpack} BACKPACK · ${a.quick} QUICK · ${a.safe} SAFE · ${a.extraCount} BONUS</small></span></button>`}).join('');return}
- const items=catalog.filter(x=>matchSlot(x,pickerRef)&&[x.name,x.nameRu,x.category].join(' ').toLowerCase().includes(q));
- $('pickerResults').innerHTML=items.slice(0,130).map(x=>`<button class="pickeritem" data-pick-item="${esc(x.id)}">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span style="font-size:24px">▣</span>'}<span><b>${esc(x.nameRu||x.name)}</b><small>${esc(x.category)}</small></span></button>`).join('')||'<p class="hint">Подходящие предметы не найдены. Попробуй перетащить нужный предмет из каталога справа.</p>';
+function availableShields(){
+ const matching=catalog.filter(isEquippableShield),byName=new Map();
+ for(const x of matching){const key=x.name.trim().toLowerCase();if(!byName.has(key))byName.set(key,x)}
+ for(const name of EQUIPPABLE_SHIELD_NAMES){if(!byName.has(name.toLowerCase()))byName.set(name.toLowerCase(),{id:'builtin:shield:'+name.toLowerCase().replace(/\s+/g,'-'),name,nameRu:'',category:'Shield',rarity:'',image:'',source:'builtin',stackMax:1,value:0});}
+ return [...byName.values()].sort((a,b)=>{const ai=EQUIPPABLE_SHIELD_NAMES.findIndex(n=>n.toLowerCase()===a.name.toLowerCase()),bi=EQUIPPABLE_SHIELD_NAMES.findIndex(n=>n.toLowerCase()===b.name.toLowerCase());return (ai<0?100:ai)-(bi<0?100:bi)||a.name.localeCompare(b.name)});
 }
-function closePicker(){$('pickerOverlay').hidden=true;pickerRef=''}
+function closeGearDropdown(){openGearDropdown='';for(const id of ['augment','shield']){$(id+'Dropdown').hidden=true;$(id==='augment'?'augmentSelector':'raidShield').querySelector('[data-ref]')?.setAttribute('aria-expanded','false')} $('augmentSelector').setAttribute('aria-expanded','false');$('raidShield').querySelector('[data-ref]')?.setAttribute('aria-expanded','false');}
+function openDropdown(kind){if(area!=='raid')return;
+ if(openGearDropdown===kind){closeGearDropdown();return}
+ closeGearDropdown();openGearDropdown=kind;
+ $(kind+'Dropdown').hidden=false;
+ if(kind==='augment'){$('augmentSelector').setAttribute('aria-expanded','true');$('augmentFilter').value='';renderAugmentOptions();$('augmentFilter').focus()}
+ else{$('raidShield').querySelector('[data-ref]')?.setAttribute('aria-expanded','true');$('shieldFilter').value='';renderShieldOptions();$('shieldFilter').focus()}
+}
+function renderAugmentOptions(){const query=$('augmentFilter').value.trim().toLocaleLowerCase();
+ const rows=AUGMENTS.filter(a=>a.name.toLocaleLowerCase().includes(query));
+ $('augmentOptions').innerHTML=rows.map(a=>{const item=catalogAugment(a),current=a.id===state.raidGear.augmentId;
+  return `<button type="button" role="option" aria-selected="${current}" class="dropdown-option ${current?'is-current':''}" data-choose-augment="${esc(a.id)}">${item?.image?`<img src="${esc(item.image)}" alt="">`:'<span class="dropdown-icon">▣</span>'}<span class="dropdown-option-label"><b>${esc(a.name)}</b><small>BACKPACK ${a.backpack} · QUICK ${a.quick} · SAFE ${a.safe}${a.extraCount?' · BONUS '+a.extraCount:''}</small></span>${current?'✓':''}</button>`}).join('')||'<p class="dropdown-empty">Аугменты не найдены</p>';
+}
+function renderShieldOptions(){const query=$('shieldFilter').value.trim().toLocaleLowerCase(),current=state.raidGear.shield;
+ const rows=availableShields().filter(x=>[x.name,x.nameRu].join(' ').toLocaleLowerCase().includes(query));
+ const remove=!query&&current?'<button class="dropdown-option" type="button" data-clear-shield="true"><span class="dropdown-icon">×</span><span class="dropdown-option-label"><b>Снять щит</b><small>Очистить слот SHIELD</small></span></button>':'';
+ $('shieldOptions').innerHTML=remove+rows.map(x=>{const selected=current?.name===x.name,tier=x.name.match(/^(Light|Medium|Heavy)\s+Shield\b/i)?.[1]||'',compatible=!tier||augmentById(state.raidGear.augmentId).shields.includes(tier);
+ return `<button type="button" role="option" aria-selected="${selected}" class="dropdown-option ${selected?'is-current':''}" data-choose-shield="${esc(x.id)}">${x.image?`<img src="${esc(x.image)}" alt="">`:'<span class="dropdown-icon">⬡</span>'}<span class="dropdown-option-label"><b>${esc(x.nameRu||x.name)}</b><small>${compatible?'Shield · подходит для AUGMENT':'Shield · ⚠ несовместим с AUGMENT'}</small></span>${selected?'✓':''}</button>`}).join('')||(!remove?'<p class="dropdown-empty">Подходящих щитов нет</p>':'');
+}
+function setShield(item){state.raidGear.shield=normSlot({...item,qty:1});selectedGearRef='';closeGearDropdown();persist();renderAll();}
+$('augmentSelector').addEventListener('click',()=>openDropdown('augment'));
+$('augmentFilter').addEventListener('input',renderAugmentOptions);
+$('shieldFilter').addEventListener('input',renderShieldOptions);
+$('augmentOptions').addEventListener('click',e=>{const b=e.target.closest('[data-choose-augment]');if(!b)return;closeGearDropdown();layoutAugment(b.dataset.chooseAugment)});
+$('shieldOptions').addEventListener('click',e=>{const clear=e.target.closest('[data-clear-shield]');if(clear){putRef('shield:0',null);closeGearDropdown();persist();renderAll();return}
+ const b=e.target.closest('[data-choose-shield]');if(!b)return;const item=availableShields().find(x=>x.id===b.dataset.chooseShield);if(item)setShield(item)});
+document.addEventListener('click',e=>{if(!openGearDropdown)return;
+ const anchor=openGearDropdown==='augment'?$('augmentSelector'):$('raidShield');
+ if(!anchor.contains(e.target)&&!$(openGearDropdown+'Dropdown').contains(e.target))closeGearDropdown();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openGearDropdown){closeGearDropdown();e.stopPropagation()}});
 function putCatalogRef(id,ref){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');
  if(ref==='augment'){const a=canonicalAugment(item.name);if(a)layoutAugment(a.id);else toast('Этот предмет не является известным аугментом');return}
  putRef(ref,normSlot({...item,qty:1}));compactOverflow();persist();renderAll();
@@ -293,19 +330,17 @@ function moveRef(from,to){if(from===to)return;if(from.startsWith('overflow')&&to
  if(to==='augment'){const aug=canonicalAugment(a.name);if(aug){layoutAugment(aug.id)}else toast('На этот слот требуется аугмент');return}
  putRef(to,a);putRef(from,b);compactOverflow();persist();renderAll();
 }
-$('augmentSelector').addEventListener('click',()=>pickerOpen('augment'));
-$('pickerSearch').addEventListener('input',renderPicker);
-$('pickerClose').addEventListener('click',closePicker);
-$('pickerOverlay').addEventListener('click',e=>{if(e.target.id==='pickerOverlay')closePicker()});
-$('pickerEdit').addEventListener('click',()=>{const ref=pickerRef;closePicker();if(getRef(ref))openEditor(ref)});
-$('pickerRemove').addEventListener('click',()=>{if(pickerRef==='augment')return;putRef(pickerRef,null);compactOverflow();persist();renderAll();closePicker()});
-$('pickerResults').addEventListener('click',e=>{const a=e.target.closest('[data-pick-augment]'),b=e.target.closest('[data-pick-item]');if(a)layoutAugment(a.dataset.pickAugment);else if(b)putCatalogRef(b.dataset.pickItem,pickerRef);if(a||b)closePicker()});
-$('raidLayout').addEventListener('click',e=>{const b=e.target.closest('[data-ref]');if(b)pickerOpen(b.dataset.ref)});
-$('raidLayout').addEventListener('dblclick',e=>{const b=e.target.closest('[data-ref]');if(b&&getRef(b.dataset.ref)){closePicker();openEditor(b.dataset.ref)}});
+$('raidLayout').addEventListener('click',e=>{
+ const b=e.target.closest('[data-ref]');if(!b)return;
+ const ref=b.dataset.ref;
+ if(ref==='shield:0'){selectedGearRef='';openDropdown('shield');return}
+ closeGearDropdown();selectedGearRef=ref;state.selectedSlot=null;
+ if(getRef(ref))openEditor(ref);else{renderGrid();renderRaid();toast('Слот выбран. Нажми предмет в каталоге или перетащи его сюда.')}
+});
 $('raidLayout').addEventListener('dragstart',e=>{const b=e.target.closest('[data-ref]');if(b&&getRef(b.dataset.ref)){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'ref',from:b.dataset.ref}));e.dataTransfer.effectAllowed='move'}});
 $('raidLayout').addEventListener('dragover',e=>{if(e.target.closest('[data-ref],#augmentSelector'))e.preventDefault()});
 $('raidLayout').addEventListener('drop',e=>{const b=e.target.closest('[data-ref],#augmentSelector');if(!b)return;e.preventDefault();let data;try{data=JSON.parse(e.dataTransfer.getData('text/plain'))}catch{return}const ref=b.id==='augmentSelector'?'augment':b.dataset.ref;
- if(data.kind==='catalog')putCatalogRef(data.id,ref);else if(data.kind==='slot')moveRef('bag:'+data.from,ref);else if(data.kind==='ref')moveRef(data.from,ref);
+ selectedGearRef='';closeGearDropdown();if(data.kind==='catalog')putCatalogRef(data.id,ref);else if(data.kind==='slot')moveRef('bag:'+data.from,ref);else if(data.kind==='ref')moveRef(data.from,ref);
 });
 function renderSaves(){$('savedList').innerHTML=builds.length?builds.map((b,i)=>`<span class="saveitem"><button data-load="${i}" class="small savename" title="Открыть сборку">${esc(b.name)}</button><button data-share="${i}" class="small shareaction" title="Показать ссылку на опубликованную копию или опубликовать сборку">${b.shareId?'Ссылка':'Поделиться'}</button>${b.shareId?`<button data-revoke="${i}" class="small revokeaction" title="Отозвать доступ по ссылке">Отозвать</button>`:''}<button data-delete="${i}" title="Удалить сборку" aria-label="Удалить сборку">×</button></span>`).join(''):'<span class="muted" style="font-size:12px">Пока нет сохранённых сборок</span>'}
 function renderAreaUi(){
@@ -322,7 +357,7 @@ function renderAreaUi(){
  (stash?$('stashGridHost'):$('raidBackpackHost')).appendChild($('inventory'));
  $('capacity').disabled=!stash;$('columns').disabled=!stash;$('presets').hidden=!stash;
  $('capacity').closest('.control').hidden=!stash;$('columns').closest('.control').hidden=!stash;$('presets').closest('.control').hidden=!stash;
- $('gridHelp').textContent=stash?'Нажми пустую ячейку, затем предмет в каталоге. Перетаскивание и настройка количества доступны.':'Выбор AUGMENT перестраивает вместимость и специальные ячейки. Нажми на любой специальный слот для поиска или перетащи предмет. Излишки сохраняются в НЕ РАЗМЕЩЕНО.';
+ $('gridHelp').textContent=stash?'Нажми пустую ячейку, затем предмет в каталоге. Перетаскивание и настройка количества доступны.':'AUGMENT и SHIELD раскрывают встроенные списки. Остальные ячейки — клик для выбора, затем предмет справа, либо перетаскивание. Излишки сохраняются в НЕ РАЗМЕЩЕНО.';
  const choices=stash?[64,88,112,136,160,184,208,232,256,280,304,328]:[12,16,18,20,24,30,36];
  $('presets').innerHTML=choices.map(n=>`<button class="small" data-capacity="${n}">${n}</button>`).join('');
  $('stashNote').hidden=!stash;
@@ -357,8 +392,8 @@ function saveBuild(){const name=$('buildName').value.trim()||'Сборка '+new
 function applySaved(x){if(!x||!Array.isArray(x.slots))throw Error('Неверный формат инвентаря');state=normState(x);closeEditor();persist();renderAll()}
 function downloadJSON(obj,name){const url=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 $('capacity').addEventListener('change',e=>updateCapacity(e.target.value));$('columns').addEventListener('change',e=>{state.columns=Number(e.target.value);persist();renderGrid()});$('presets').addEventListener('click',e=>{const b=e.target.closest('[data-capacity]');if(b)updateCapacity(b.dataset.capacity)});
-$('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);state.selectedSlot=i;renderGrid();if(state.slots[i])openEditor(i)});
-$('catalogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(b)addItem(b.dataset.item)});
+$('inventory').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(!b)return;const i=Number(b.dataset.slot);selectedGearRef='';closeGearDropdown();state.selectedSlot=i;renderGrid();renderRaid();if(state.slots[i])openEditor(i)});
+$('catalogGrid').addEventListener('click',e=>{const b=e.target.closest('[data-item]');if(!b)return;if(area==='raid'&&selectedGearRef){const ref=selectedGearRef;selectedGearRef='';putCatalogRef(b.dataset.item,ref)}else addItem(b.dataset.item)});
 $('catalogGrid').addEventListener('dragstart',e=>{const b=e.target.closest('[data-item]');if(b){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'catalog',id:b.dataset.item}));e.dataTransfer.effectAllowed='copy'}});
 $('inventory').addEventListener('dragstart',e=>{const b=e.target.closest('[data-slot]');if(b&&state.slots[Number(b.dataset.slot)]){e.dataTransfer.setData('text/plain',JSON.stringify({kind:'slot',from:Number(b.dataset.slot)}));e.dataTransfer.effectAllowed='move'}});
 $('inventory').addEventListener('dragover',e=>{if(e.target.closest('[data-slot]'))e.preventDefault()});
