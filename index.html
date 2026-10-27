@@ -529,6 +529,26 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 .cursor-toast[hidden]{display:none!important}
 .cursor-toast:not([hidden]){animation:copied-pop 1.9s ease both}
 @keyframes copied-pop{0%{opacity:0;transform:translateY(6px)}12%,78%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}
+
+/* v8.2: collected progress in STASH header and browser-free item hints */
+.collected-progress{border-color:#547865!important;background:#1d312d!important;color:#b8dfcb!important}
+.collected-progress #collectedPercent{font-weight:900;color:#89ddb2;margin-left:5px;padding-left:8px;border-left:1px solid #527565}
+.action-discard{background:#282b2d!important;color:#f3bc9f!important;border-color:#885d50!important}
+.action-discard:hover{background:#50342c!important}
+.item-tooltip{position:fixed;z-index:250;pointer-events:none;max-width:265px;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid #667b88;background:#13222deF;box-shadow:0 9px 28px #000c;color:#e2edf2;font:700 12px/1.35 'Barlow','Roboto Condensed','Segoe UI',sans-serif}
+.item-tooltip strong{display:block;color:#fff;font-weight:800}
+.item-tooltip .tooltip-ru{display:block;margin-top:3px;color:#b6c9d5;font-size:11px;font-weight:500}
+.item-tooltip .tooltip-meta{display:block;color:#ecc18b;font-size:10px;font-weight:600;margin-top:5px}
+.item-tooltip[hidden]{display:none!important}
+#stashGridHost #inventory[data-columns="8"] .name,#stashGridHost #inventory[data-columns="9"] .name,
+#stashGridHost #inventory[data-columns="10"] .name,#stashGridHost #inventory[data-columns="11"] .name,
+#stashGridHost #inventory[data-columns="12"] .name{display:none!important}
+#stashGridHost #inventory[data-columns="8"] .name-ru,#stashGridHost #inventory[data-columns="9"] .name-ru,
+#stashGridHost #inventory[data-columns="10"] .name-ru,#stashGridHost #inventory[data-columns="11"] .name-ru,
+#stashGridHost #inventory[data-columns="12"] .name-ru{display:none!important}
+#stashGridHost #inventory[data-columns="8"] .slot img,#stashGridHost #inventory[data-columns="9"] .slot img,
+#stashGridHost #inventory[data-columns="10"] .slot img,#stashGridHost #inventory[data-columns="11"] .slot img,
+#stashGridHost #inventory[data-columns="12"] .slot img{height:79%!important}
 </style>
 </head>
 <body>
@@ -538,7 +558,7 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
 <section id="resourcesPanel" class="resources-panel panel" hidden><div class="panelhead"><div><div class="eyebrow">CRAFT TRACKER</div><div class="paneltitle">RESOURCES · ПОИСК РЕЦЕПТОВ</div></div></div><div class="content"><p class="hint">Выбери один или несколько ресурсов. Сначала рецепты, охватывающие больше выбранных ресурсов, затем с минимальным числом лишних ингредиентов. Отслеживание в самой игре включается вручную.</p><input id="resourceSearch" type="search" placeholder="Поиск: Plastic Parts / Пластик..." autocomplete="off"><div id="resourceHistory" class="resource-history" hidden></div><div id="resourceList" class="resource-list"></div><div id="resourceChosen" class="resource-chosen"></div><div id="resourceResults" class="resource-results"></div></div></section><div class="dashboard" id="mainDashboard">
 <section class="panel"><div class="panelhead"><div><div class="eyebrow">КОНФИГУРАЦИЯ</div><div class="paneltitle" id="workspaceTitle">МОЙ СКЛАД · STASH</div></div><button class="small subtle" id="clearBtn">Очистить ячейки</button></div><div class="content">
 <p class="intro" id="areaDescription">Модель хранилища в Сперанце. Каждый стак занимает отдельную ячейку.</p><div class="controls"><div class="control"><label for="capacity">Количество ячеек</label><input id="capacity" type="number" min="1" max="600" value="64"></div><div class="control"><label for="columns">Столбцов</label><select id="columns"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>12</option></select></div><div class="control"><label>Быстрый размер</label><div class="presets" id="presets"></div></div></div>
-<p id="stashNote" class="hint">Обычный склад начинается с 64 ячеек. Быстрые значения отражают расширения по 24 слота до 328. Дополнительные бонусы можно учесть вручную.</p><div class="line"></div><div class="summary"><span class="countchip">Занято <span class="fraction"><b id="usedCount">0</b>/<b id="totalCount">64</b></span></span><span class="countchip">Свободно <b id="freeCount">64</b></span><span class="countchip">Предметов <b id="itemCount">0</b></span></div>
+<p id="stashNote" class="hint">Обычный склад начинается с 64 ячеек. Быстрые значения отражают расширения по 24 слота до 328. Дополнительные бонусы можно учесть вручную.</p><div class="line"></div><div class="summary"><span class="countchip">Занято <span class="fraction"><b id="usedCount">0</b>/<b id="totalCount">64</b></span></span><span class="countchip">Свободно <b id="freeCount">64</b></span><span class="countchip">Предметов <b id="itemCount">0</b></span><span class="countchip collected-progress">Собрано <b id="collectedCount">0</b><span class="fraction">/<b id="collectedTotal">0</b></span><b id="collectedPercent">0%</b></span></div>
 <div id="plansTopAnchor"></div><div id="stashGridHost"><div class="stash-browser">
   <nav id="stashCategoryBar" class="stash-categories" aria-label="Категории предметов склада"></nav>
   <div class="stash-item-area">
@@ -603,13 +623,13 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
    <label for="actionInput" id="actionInputLabel" hidden>Название</label>
    <input id="actionInput" type="text" autocomplete="off" hidden>
    <div class="modal-actions action-buttons">
-    <button id="actionCancel" type="button">Отмена <span class="keycap">Esc</span></button>
+    <button id="actionCancel" type="button">Отмена <span class="keycap">Esc</span></button><button id="actionDiscard" class="action-discard" type="button" hidden>Не сохранять</button>
     <button id="actionConfirm" class="primary" type="submit">Подтвердить <span class="keycap">Enter</span></button>
    </div>
   </form>
  </div>
 </div>
-<div id="toast" class="toast" hidden></div><div id="cursorToast" class="cursor-toast" role="status" aria-live="polite" hidden></div>
+<div id="toast" class="toast" hidden></div><div id="cursorToast" class="cursor-toast" role="status" aria-live="polite" hidden></div><div id="itemTooltip" class="item-tooltip" role="tooltip" hidden></div>
 <button id="backToTop" class="back-to-top" type="button" aria-label="Вернуться в начало страницы" title="Наверх" hidden><span aria-hidden="true">↑</span> Наверх</button>
 <script>
 // Tell the visitor when the app module is blocked or a stale cached script fails.
@@ -621,5 +641,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=8.1-stash-progress-drag-share"></script>
+<script type="module" src="./app.js?v=8.2-unsaved-progress-single-pdf"></script>
 </body></html>
