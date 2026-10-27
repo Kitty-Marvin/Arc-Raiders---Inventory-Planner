@@ -6,14 +6,14 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    function validPayload() {
+    function validPayload(maxSlots) {
       return request.resource.data.keys().hasOnly(['revision','state','builds','updatedAt'])
         && request.resource.data.keys().hasAll(['revision','state','builds','updatedAt'])
         && request.resource.data.revision is int
         && request.resource.data.state is map
         && request.resource.data.state.capacity is int
         && request.resource.data.state.capacity >= 1
-        && request.resource.data.state.capacity <= 120
+        && request.resource.data.state.capacity <= maxSlots
         && request.resource.data.state.columns is int
         && request.resource.data.state.slots is list
         && request.resource.data.state.slots.size() == request.resource.data.state.capacity
@@ -23,13 +23,42 @@ service cloud.firestore {
     }
 
     match /users/{userId}/planner/{documentId} {
-      allow read: if isOwner(userId) && documentId == 'main';
-      allow create: if isOwner(userId) && documentId == 'main'
-        && validPayload() && request.resource.data.revision == 1;
-      allow update: if isOwner(userId) && documentId == 'main'
-        && validPayload()
+      allow read: if isOwner(userId) && (documentId == 'main' || documentId == 'stash');
+      allow create: if isOwner(userId) && (documentId == 'main' || documentId == 'stash')
+        && validPayload(documentId == 'stash' ? 600 : 120) && request.resource.data.revision == 1;
+      allow update: if isOwner(userId) && (documentId == 'main' || documentId == 'stash')
+        && validPayload(documentId == 'stash' ? 600 : 120)
         && request.resource.data.revision == resource.data.revision + 1;
       allow delete: if false;
+    }
+
+    // Public shares are unguessable per-link snapshots. No listing of all shares.
+    match /sharedBuilds/{shareId} {
+      allow get: if shareId.matches('^[0-9a-f]{32}$');
+      allow list: if false;
+      allow create: if request.auth != null
+        && shareId.matches('^[0-9a-f]{32}$')
+        && request.resource.data.keys().hasOnly(['ownerUid','name','build','createdAt','area'])
+        && request.resource.data.keys().hasAll(['ownerUid','name','build','createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.createdAt is string
+        && (request.resource.data.get('area','raid') == 'stash' || request.resource.data.get('area','raid') == 'raid')
+        && request.resource.data.build is map
+        && request.resource.data.build.keys().hasOnly(['capacity','columns','slots'])
+        && request.resource.data.build.keys().hasAll(['capacity','columns','slots'])
+        && request.resource.data.build.capacity is int
+        && request.resource.data.build.capacity >= 1
+        && request.resource.data.build.capacity <= (request.resource.data.get('area','raid') == 'stash' ? 600 : 120)
+        && request.resource.data.build.columns is int
+        && request.resource.data.build.columns >= 4
+        && request.resource.data.build.columns <= 12
+        && request.resource.data.build.slots is list
+        && request.resource.data.build.slots.size() == request.resource.data.build.capacity;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
     }
 
     match /{document=**} {
