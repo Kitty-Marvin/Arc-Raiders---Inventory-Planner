@@ -232,8 +232,45 @@ function blueprintArtwork(item){
  const img=validImage(item?.image);
  return `<span class="bp-art">${img?`<img src="${esc(img)}" alt="" loading="lazy" onerror="this.hidden=true">`:'<span class="blueprint-fallback">▤</span>'}</span>`;
 }
-function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
+// STASH visual filter: leaves saved slots and their indices unchanged.
+const STASH_CATEGORIES=[
+ ['all','ВСЁ','Icon_AllItems.png','◈'],['material','МАТЕРИАЛЫ','Icon_Material.png','⬡'],
+ ['shield','ЩИТЫ','Icon_Shield.png','⬢'],['weapon','ОРУЖИЕ','Icon_Weapon.png','⌁'],
+ ['ammo','ПАТРОНЫ','Icon_Ammo.png','▥'],['quick','РАСХОДНИКИ','Icon_QuickUse.png','✚'],
+ ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],['key','КЛЮЧИ','Icon_Key.png','⚿'],
+ ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤'],
+ ['other','ПРОЧЕЕ','Icon_Misc.png','◌']];
+let stashFilter='all';
+function stashKind(item){
+ const cat=String(item?.category||'').toLowerCase(),name=String(item?.name||'').toLowerCase();
+ if(/shield|щит/.test(cat)||/^(light|medium|heavy) shield$/i.test(name))return 'shield';
+ if(/blueprint|research|исслед|чертёж|чертеж/.test(cat)||/\bblueprint\b/i.test(name))return 'research';
+ if(/augment|аугмент/.test(cat))return 'augment';
+ if(/modification|attachment|weapon mod|модификац/.test(cat))return 'mod';
+ if(/ammunition|ammo|патрон|боеприпас/.test(cat))return 'ammo';
+ if(/weapon|rifle|shotgun|pistol|smg|lmg|hand cannon|оруж/.test(cat))return 'weapon';
+ if(/quick use|consumable|utility|medical|grenade|healing|расход/.test(cat))return 'quick';
+ if(/key|ключ/.test(cat))return 'key';
+ if(/material|recyclable|nature|resource|crafting|trinket|материал|ресурс/.test(cat))return 'material';
+ return 'other';
+}
+function renderStashCategories(){
+ $('stashCategoryBar').innerHTML=STASH_CATEGORIES.map(([id,label,icon,backup])=>{
+  const count=state.slots.filter(x=>x&&(id==='all'||stashKind(x)===id)).length;
+  const active=stashFilter===id;
+  return \`<button type="button" class="stash-category \${active?'active':''}" data-stash-category="\${id}" aria-pressed="\${active}" title="\${label}"><span class="cat-icon"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/\${icon}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="cat-fallback" hidden>\${backup}</span></span><span class="cat-name">\${label}</span><span class="cat-count">\${count}</span></button>\`;
+ }).join('');
+ const visible=state.slots.filter(x=>x&&(stashFilter==='all'||stashKind(x)===stashFilter)).length;
+ $('stashFilterCaption').textContent=stashFilter==='all'?'ВСЕ ПРЕДМЕТЫ · '+visible:'ПОКАЗАНО '+visible+' · '+STASH_CATEGORIES.find(x=>x[0]===stashFilter)[1];
+}
+$('stashCategoryBar').addEventListener('click',e=>{
+ const btn=e.target.closest('[data-stash-category]');if(!btn)return;
+ stashFilter=btn.dataset.stashCategory;
+ state.selectedSlot=null;renderGrid();
+});
+function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button ${area==='stash'&&stashFilter!=='all'&&(!s||stashKind(s)!==stashFilter)?'hidden':''} class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
  const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
+ if(area==='stash')renderStashCategories();
 }
 
 // ----- Dynamic game-style LOADOUTS -----
@@ -393,7 +430,7 @@ function renderAreaUi(){
  $('buildName').placeholder=stash?'Название плана (например: Основной склад)':'Название сборки (например: Фарм Бастиона)';
  $('capacity').max=stash?STASH_MAX:RAID_MAX;
  $('raidLayout').hidden=stash;$('stashGridHost').hidden=!stash;
- (stash?$('stashGridHost'):$('raidBackpackHost')).appendChild($('inventory'));
+ (stash?$('stashGridMount'):$('raidBackpackHost')).appendChild($('inventory'));
  $('capacity').disabled=!stash;$('columns').disabled=!stash;$('presets').hidden=!stash;
  $('capacity').closest('.control').hidden=!stash;$('columns').closest('.control').hidden=!stash;$('presets').closest('.control').hidden=!stash;
  $('gridHelp').textContent=stash?'Нажми пустую ячейку, затем предмет в каталоге. Перетаскивание и настройка количества доступны.':'AUGMENT и SHIELD раскрывают встроенные списки. Остальные ячейки — клик для выбора, затем предмет справа, либо перетаскивание. Излишки сохраняются в НЕ РАЗМЕЩЕНО.';
@@ -412,7 +449,7 @@ function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.nameRu||x.name)}</span><span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span></span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.nameRu||x.name)}</span><span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span><span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span></span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
