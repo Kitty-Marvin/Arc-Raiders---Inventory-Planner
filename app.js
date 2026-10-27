@@ -258,7 +258,7 @@ function renderStashCategories(){
  $('stashCategoryBar').innerHTML=STASH_CATEGORIES.map(([id,label,icon,backup])=>{
   const count=state.slots.filter(x=>x&&(id==='all'||stashKind(x)===id)).length;
   const active=stashFilter===id;
-  return \`<button type="button" class="stash-category \${active?'active':''}" data-stash-category="\${id}" aria-pressed="\${active}" title="\${label}"><span class="cat-icon"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/\${icon}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="cat-fallback" hidden>\${backup}</span></span><span class="cat-name">\${label}</span><span class="cat-count">\${count}</span></button>\`;
+  return `<button type="button" class="stash-category ${active?'active':''}" data-stash-category="${id}" aria-pressed="${active}" title="${label}"><span class="cat-icon"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${icon}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="cat-fallback" hidden>${backup}</span></span><span class="cat-name">${label}</span><span class="cat-count">${count}</span></button>`;
  }).join('');
  const visible=state.slots.filter(x=>x&&(stashFilter==='all'||stashKind(x)===stashFilter)).length;
  $('stashFilterCaption').textContent=stashFilter==='all'?'ВСЕ ПРЕДМЕТЫ · '+visible:'ПОКАЗАНО '+visible+' · '+STASH_CATEGORIES.find(x=>x[0]===stashFilter)[1];
