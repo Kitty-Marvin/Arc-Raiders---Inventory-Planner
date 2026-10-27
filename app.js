@@ -234,12 +234,11 @@ function blueprintArtwork(item){
 }
 // STASH visual filter: leaves saved slots and their indices unchanged.
 const STASH_CATEGORIES=[
- ['all','ВСЁ','Icon_AllItems.png','◈'],['material','МАТЕРИАЛЫ','Icon_Material.png','⬡'],
- ['shield','ЩИТЫ','Icon_Shield.png','⬢'],['weapon','ОРУЖИЕ','Icon_Weapon.png','⌁'],
+ ['all','ВСЁ','Icon_AllItems.png','▦'],['other','ПРОЧЕЕ','Icon_Misc.png','◎'],['shield','ЩИТЫ','Icon_Shield.png','⬡'],
+ ['weapon','ОРУЖИЕ','Icon_Weapon.png','⌁'],
  ['ammo','ПАТРОНЫ','Icon_Ammo.png','▥'],['quick','РАСХОДНИКИ','Icon_QuickUse.png','✚'],
  ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],['key','КЛЮЧИ','Icon_Key.png','⚿'],
- ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤'],
- ['other','ПРОЧЕЕ','Icon_Misc.png','◌']];
+ ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤']];
 let stashFilter='all',stashSort='type';
 function stashKind(item){
  const cat=String(item?.category||'').toLowerCase(),name=String(item?.name||'').toLowerCase();
@@ -256,7 +255,7 @@ function stashKind(item){
 }
 // Automatic STASH sorting affects only what is displayed, not Firestore or saved plans.
 const STASH_RARITY_ORDER={common:1,uncommon:2,rare:3,epic:4,legendary:5,amplified:6};
-function stashRarity(item){return STASH_RARITY_ORDER[String(item?.rarity||'').trim().toLowerCase()]||0}
+function stashRarity(item){return isBlueprint(item)?0:(STASH_RARITY_ORDER[String(item?.rarity||'').trim().toLowerCase()]||0)}
 function stashValue(item){return (Number(item?.value)||0)*Math.max(1,Number(item?.qty)||1)}
 function stashTypeOrder(item){const n=STASH_CATEGORIES.findIndex(row=>row[0]===stashKind(item));return n<0?99:n}
 function stashViewEntries(){
@@ -299,7 +298,7 @@ $('stashSort').addEventListener('change',e=>{
  stashSort=e.target.value;
  if(area==='stash')renderGrid();
 });
-function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);const shownSlots=area==='stash'?stashViewEntries():state.slots.map((item,index)=>({item,index}));grid.innerHTML=shownSlots.map(({item:s,index:i},v)=>`<button class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}"><span class="slotnum">${String(v+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
+function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);const shownSlots=area==='stash'?stashViewEntries():state.slots.map((item,index)=>({item,index}));grid.innerHTML=shownSlots.map(({item:s,index:i},v)=>`<button class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc(isBlueprint(s)?'':(s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}"><span class="slotnum">${String(v+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name" lang="en">${esc(s.name)}</span>${s.nameRu&&s.nameRu!==s.name?`<span class="name-ru" lang="ru">${esc(s.nameRu)}</span>`:''}<span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
  const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
  if(area==='stash')renderStashCategories();
 }
@@ -480,17 +479,36 @@ function renderAll(){renderAreaUi();renderGrid();renderRaid();renderSaves()}
 function renderCatalog(){const q=$('search').value.trim().toLocaleLowerCase(),cat=$('category').value;
  const arr=catalog.filter(x=>(area!=='stash'||isStashItem(x))&&(!cat||x.category===cat)&&(!q||[x.name,x.nameRu,x.category,x.slug].join(' ').toLocaleLowerCase().includes(q)));
  $('resultCount').textContent=arr.length+' / '+catalog.filter(x=>area!=='stash'||isStashItem(x)).length;
- $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.nameRu||x.name)}</span><span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span><span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span></span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
+ $('catalogGrid').innerHTML=arr.slice(0,shown).map(x=>`<button class="item ${isBlueprint(x)?'is-blueprint':''}" data-rarity="${esc(isBlueprint(x)?'':String(x.rarity||'').toLowerCase())}" draggable="true" data-item="${esc(x.id)}" title="Добавить ${esc(x.name)}">${isBlueprint(x)?blueprintArtwork(x):(validImage(x.image)?`<img src="${esc(x.image)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="placeholder" style="display:none">◇</span>`:'<span class="placeholder">◇</span>')}<span class="itemdata"><span class="itemtitle">${esc(x.name)}</span>${x.nameRu&&x.nameRu!==x.name?`<span class="item-subname">${esc(x.nameRu)}</span>`:''}<span class="itemsubtitle">${esc(x.category||'Предмет')}${x.stackMax?' · стак '+x.stackMax:''}</span>${isBlueprint(x)?'':`<span class="item-rarity">${esc(x.rarity||'Редкость не указана')}</span>`}</span></button>`).join('')||'<div class="muted" style="padding:15px;grid-column:1/-1">Совпадений нет.</div>';
  $('showMore').hidden=arr.length<=shown;
 }
 function categories(){const old=$('category').value,names=[...new Set(catalog.filter(x=>area!=='stash'||isStashItem(x)).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));$('category').innerHTML='<option value="">Все категории</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(names.includes(old))$('category').value=old}
 async function fetchCatalog(){const source=$('source').value,st=$('catalogStatus');st.textContent='Загрузка локального кэша '+source+'…';st.className='catalogstatus';$('refreshBtn').disabled=true;
  try{const res=await fetch('./catalog/'+source+'.json',{cache:'no-cache'});if(!res.ok)throw new Error('Файл каталога недоступен');const data=await res.json();if(source!==$('source').value)return;
   if(!Array.isArray(data.items)||!data.items.length)throw new Error('Каталог ещё не загружен. В GitHub → Actions запустите «Update ARC items catalog».');
-  catalog=data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image)}));
-  shown=80;categories();renderCatalog();st.className='catalogstatus ok';st.textContent=`${catalog.length} предметов · ${source==='metaforge'?'MetaForge':'ARDB'} · обновлён ${data.updatedAt||'вручную'}`;
+  catalog=data.items.map(x=>({...x,id:String(x.id),name:String(x.name),image:validImage(x.image),rarity:isBlueprint(x)?'':String(x.rarity||'')}));
+  shown=80;categories();renderCatalog();syncCatalogMetadata();st.className='catalogstatus ok';st.textContent=`${catalog.length} предметов · ${source==='metaforge'?'MetaForge':'ARDB'} · обновлён ${data.updatedAt||'вручную'}`;
  }catch(err){if(source!==$('source').value)return;catalog=demoItems;shown=80;categories();renderCatalog();st.className='catalogstatus fail';st.textContent='Демонстрационный каталог (8 предметов). '+err.message}
  finally{$('refreshBtn').disabled=false}
+}
+
+function refreshSavedItem(item,byId,byName){
+ if(!item)return false;
+ const match=byId.get(item.id)||byName.get(String(item.name||'').trim().toLowerCase());
+ if(!match||String(match.name||'').toLowerCase()!==String(item.name||'').toLowerCase())return false;
+ let changed=false;
+ const patch={nameRu:match.nameRu||item.nameRu||'',rarity:isBlueprint(item)?'':match.rarity,
+   value:match.value,stackMax:match.stackMax||item.stackMax,image:match.image||item.image};
+ for(const [key,val] of Object.entries(patch)){if(val!==undefined&&item[key]!==val){item[key]=val;changed=true}}
+ return changed;
+}
+function syncCatalogMetadata(){
+ if(area!=='stash'||mode!=='cloud'||!ready||halted||saveBusy||dirty>saved||!catalog.length)return;
+ const byId=new Map(catalog.map(x=>[x.id,x])),byName=new Map(catalog.map(x=>[String(x.name||'').trim().toLowerCase(),x]));
+ let changed=false;
+ for(const item of state.slots)if(refreshSavedItem(item,byId,byName))changed=true;
+ for(const plan of builds)for(const item of plan.slots||[])if(refreshSavedItem(item,byId,byName))changed=true;
+ if(changed){persist();renderGrid();renderSaves();toast('Характеристики предметов обновлены')}
 }
 function firstEmpty(){return state.slots.findIndex(s=>!s)}
 function addItem(id,target=state.selectedSlot){const item=catalog.find(x=>x.id===id);if(!item)return toast('Предмет не найден');if(area==='stash'&&!isStashItem(item))return toast('Этот предмет не хранится в STASH');if(target==null||target<0||target>=state.capacity)target=firstEmpty();if(target<0)return toast('Нет свободных ячеек');state.slots[target]={...normSlot({...item,qty:1}),qty:1};state.selectedSlot=target;persist();renderGrid();renderRaid();toast('Добавлено: '+item.name)}
