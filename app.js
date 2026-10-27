@@ -48,7 +48,7 @@ const demoItems = [
 const initial = (which='stash')=>{const capacity=which==='stash'?64:18;return {capacity,columns:which==='stash'?10:4,slots:Array(capacity).fill(null),selectedSlot:null,...(which==='raid'?{raidGear:createGear()}: {})}};
 const cache={stash:{state:initial('stash'),builds:[]},raid:{state:initial('raid'),builds:[]}};
 let state=initial('stash'), builds=[],catalog=demoItems,shown=80,editingIndex=null,toastTimer=null;
-let allowCloudLogin=false,loginSubmitting=false;let resourcesOpen=false,resourceData=null,resourceSelected='',resourceTracking=new Set();
+let allowCloudLogin=false,loginSubmitting=false;let resourcesOpen=false,resourceData=null,resourceSelection=new Set();
 let mode='loading',ready=false,auth=null,db=null,workspace=null,user=null,unsubscribe=null;
 let remoteRevision=0, dirty=0,saved=0,saveBusy=false,halted=false,saveTimer=null,savingRevision=-1,sessionToken=0;
 let pendingRemote=false,demoChosen=false,registerMode=false,sharedPreview=null;
@@ -118,22 +118,42 @@ async function openResources(){
 }
 function renderResources(){
  if(!resourceData)return;
- const textQuery=$('resourceSearch').value.toLocaleLowerCase().trim();
+ const query=$('resourceSearch').value.toLocaleLowerCase().trim();
  const items=resourceData.items||{},recipes=resourceData.recipes||[];
- const resources=[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(textQuery));
- $('resourceList').innerHTML=resources.slice(0,100).map(id=>`<button type="button" data-resource="${esc(id)}" class="${resourceSelected===id?'active':''}">${validImage(items[id].image)?`<img src="${esc(items[id].image)}" alt="">`:''}<span>${esc(items[id].name)}${items[id].nameRu?'<small> · '+esc(items[id].nameRu)+'</small>':''}</span></button>`).join('');
- if(!resourceSelected||!items[resourceSelected]){$('resourceResults').innerHTML='<p class="hint">Нажми нужный материал выше — покажем подходящие рецепты.</p>';return}
- const matches=recipes.filter(r=>r.ingredients.some(i=>i.id===resourceSelected)).sort((a,b)=>(a.ingredients.length-b.ingredients.length)||(a.ingredients.reduce((x,y)=>x+y.qty,0)-b.ingredients.reduce((x,y)=>x+y.qty,0)));
- $('resourceResults').innerHTML=matches.map(r=>{
-  const item=items[r.id];if(!item)return '';
-  const others=r.ingredients.filter(i=>i.id!==resourceSelected).length;
-  return `<article class="recipe-card"><div class="recipe-head">${validImage(item.image)?`<img src="${esc(item.image)}" alt="">`:''}<div><h3>${esc(item.name)}</h3><small>${esc(item.nameRu||'')}</small></div></div><p class="recipe-rank">${others===0?'ТОЛЬКО НУЖНЫЙ РЕСУРС':others+' дополнительных ресурсов'}</p><div class="recipe-ingredients">${r.ingredients.map(i=>`${esc(items[i.id]?.nameRu||items[i.id]?.name||i.id)} × ${i.qty}${i.id===resourceSelected?' 👁':''}`).join(' · ')}</div><button type="button" data-track="${esc(r.id)}">${resourceTracking.has(r.id)?'✓ В плане':'👁 Добавить в план отслеживания'}</button></article>`;
- }).join('')||'<p class="hint">Подходящие рецепты не найдены.</p>';
+ const resourceIds=[...new Set(recipes.flatMap(r=>r.ingredients.map(i=>i.id)))].filter(id=>items[id]&&[items[id].name,items[id].nameRu].join(' ').toLocaleLowerCase().includes(query));
+ $('resourceList').innerHTML=resourceIds.slice(0,120).map(id=>{
+  const item=items[id],selected=resourceSelection.has(id);
+  return `<button type="button" data-resource="${esc(id)}" class="${selected?'active':''}" aria-pressed="${selected}">${validImage(item.image)?`<img src="${esc(item.image)}" alt="">`:''}<span>${esc(item.name)}${item.nameRu?'<small> · '+esc(item.nameRu)+'</small>':''}</span>${selected?'<b>✓</b>':''}</button>`;
+ }).join('');
+ const selected=[...resourceSelection].filter(id=>items[id]);
+ $('resourceChosen').innerHTML=selected.length?selected.map(id=>`<span class="resource-chip">${esc(items[id].nameRu||items[id].name)} <button data-remove-resource="${esc(id)}" aria-label="Убрать ${esc(items[id].name)}">×</button></span>`).join(''):'<span class="hint">Выбери один или несколько нужных ресурсов</span>';
+ if(!selected.length){$('resourceResults').innerHTML='<p class="hint">Выбери нужные ресурсы. Рецепты будут отсортированы по минимальному количеству лишних ресурсов.</p>';return}
+ const selectedSet=new Set(selected);
+ // Coverage first, then fewer unnecessary tracked ingredients.
+ const matches=recipes.map(recipe=>{
+  const ids=new Set(recipe.ingredients.map(i=>i.id));
+  const covered=selected.filter(id=>ids.has(id)).length;
+  return {...recipe,covered,extra:recipe.ingredients.filter(i=>!selectedSet.has(i.id)).length};
+ }).filter(x=>x.covered>0).sort((a,b)=>b.covered-a.covered||a.extra-b.extra||a.ingredients.length-b.ingredients.length);
+ $('resourceResults').innerHTML=matches.slice(0,160).map(recipe=>{
+  const item=items[recipe.id];if(!item)return '';
+  return `<article class="recipe-card">
+   <div class="recipe-head">${validImage(item.image)?`<img src="${esc(item.image)}" alt="">`:''}<div><h3>${esc(item.name)}</h3><small>${esc(item.nameRu||'')}</small></div></div>
+   <p class="recipe-rank">НУЖНЫХ РЕСУРСОВ: ${recipe.covered}/${selected.length} · ДОПОЛНИТЕЛЬНЫХ: ${recipe.extra}</p>
+   <div class="recipe-ingredient-list">${recipe.ingredients.map(ing=>{
+    const resource=items[ing.id]||{name:ing.id,image:''},wanted=selectedSet.has(ing.id);
+    return `<div class="recipe-ingredient ${wanted?'wanted':''}">${validImage(resource.image)?`<img loading="lazy" src="${esc(resource.image)}" alt="">`:'<span class="ingredient-fallback">◇</span>'}<span><b>${esc(resource.name)}</b><small>${esc(resource.nameRu||'')}</small></span><strong>×${ing.qty}</strong>${wanted?'<span class="wanted-eye">👁</span>':''}</div>`;
+   }).join('')}</div>
+  </article>`;
+ }).join('')||'<p class="hint">Для выбранных ресурсов рецептов не найдено.</p>';
 }
 $('resourceSearch').addEventListener('input',renderResources);
-$('resourceList').addEventListener('click',e=>{const b=e.target.closest('[data-resource]');if(!b)return;resourceSelected=b.dataset.resource;renderResources()});
-$('resourceResults').addEventListener('click',e=>{const b=e.target.closest('[data-track]');if(!b)return;if(resourceTracking.has(b.dataset.track))resourceTracking.delete(b.dataset.track);else resourceTracking.add(b.dataset.track);localStorage.setItem('arc-resource-tracking-v1',JSON.stringify([...resourceTracking]));renderResources();toast('Это план отслеживания. В игре отметь нужный крафт вручную.')});
-try{resourceTracking=new Set(JSON.parse(localStorage.getItem('arc-resource-tracking-v1')||'[]'))}catch{};
+$('resourceList').addEventListener('click',e=>{
+ const btn=e.target.closest('[data-resource]');if(!btn)return;
+ const id=btn.dataset.resource;if(resourceSelection.has(id))resourceSelection.delete(id);else resourceSelection.add(id);
+ renderResources();
+});
+$('resourceChosen').addEventListener('click',e=>{const b=e.target.closest('[data-remove-resource]');if(!b)return;resourceSelection.delete(b.dataset.removeResource);renderResources()});
 
 function setStatus(s){$('saveStatus').textContent=s}
 function message(err){const code=err?.code||''; const messages={
