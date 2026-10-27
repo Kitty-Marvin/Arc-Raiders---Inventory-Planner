@@ -502,6 +502,33 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
  .saveitem.plan-drop-before,.saveitem.plan-drop-after{transform:none!important}
 }
 
+
+/* v8.1: Reliable progress checks, legible grid labels, pointer-based plan sorting */
+.clear-collected{flex-shrink:0;border:1px solid #497565!important;background:#182c29!important;color:#b4e2ce!important;padding:5px 8px!important;font-size:10px!important;font-weight:700}
+.clear-collected:hover{background:#26493c!important;border-color:#85caaa!important}
+#stashGridHost .slot{container-type:inline-size}
+#stashGridHost .slot .collected-toggle{left:6px;top:20px;width:21px;height:21px;z-index:5;border:1px solid #7d929e;border-radius:4px;display:grid;place-items:center;pointer-events:auto}
+#stashGridHost .slot .collected-toggle[aria-checked="true"]{border-color:#83dcad;background:#216044;box-shadow:0 0 0 1px #69a98355}
+#stashGridHost .slot .name{white-space:normal!important;display:-webkit-box!important;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden!important;max-height:28px!important;line-height:1.15!important;margin:0!important;overflow-wrap:anywhere}
+#stashGridHost .slot .name-ru{line-height:1.15!important;max-height:22px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+#stashGridHost #inventory[data-columns="6"] .name-ru,
+#stashGridHost #inventory[data-columns="7"] .name-ru,
+#stashGridHost #inventory[data-columns="8"] .name-ru,
+#stashGridHost #inventory[data-columns="9"] .name-ru,
+#stashGridHost #inventory[data-columns="10"] .name-ru,
+#stashGridHost #inventory[data-columns="11"] .name-ru,
+#stashGridHost #inventory[data-columns="12"] .name-ru{display:none!important}
+@container (max-width:127px){.name-ru{display:none!important}}
+.saveitem.plan-dragging{opacity:.18!important}
+.saveitem.plan-drop-before,.saveitem.plan-drop-after{transform:none!important}
+.plan-drag-handle{cursor:grab;touch-action:none;user-select:none}
+.plan-ghost{position:fixed!important;z-index:120!important;pointer-events:none!important;opacity:.94!important;transform:rotate(-2deg);box-shadow:0 14px 34px #000b,0 0 0 1px #e5ae59;border-color:#e5ae59!important;transition:none!important;will-change:left,top}
+.saveitem.plan-scoot-before{transform:translateX(24px)!important;border-color:#edb96a!important}
+.saveitem.plan-scoot-after{transform:translateX(-24px)!important;border-color:#edb96a!important}
+.cursor-toast{position:fixed;z-index:150;pointer-events:none;background:#203b35;border:1px solid #7ed4a5;color:#dbffeb;font:700 12px/1.2 'Barlow','Segoe UI',sans-serif;padding:9px 12px;border-radius:6px;box-shadow:0 7px 22px #0009;white-space:nowrap}
+.cursor-toast[hidden]{display:none!important}
+.cursor-toast:not([hidden]){animation:copied-pop 1.9s ease both}
+@keyframes copied-pop{0%{opacity:0;transform:translateY(6px)}12%,78%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}
 </style>
 </head>
 <body>
@@ -516,7 +543,7 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
   <nav id="stashCategoryBar" class="stash-categories" aria-label="Категории предметов склада"></nav>
   <div class="stash-item-area">
     <div class="stash-toolbar">
-      <div id="stashFilterCaption" class="stash-filter-caption" role="status" aria-live="polite"></div>
+      <div id="stashFilterCaption" class="stash-filter-caption" role="status" aria-live="polite"></div><button id="clearCollected" type="button" class="small clear-collected" hidden>Снять все галочки</button>
       <label class="stash-sort-label" for="stashSort">СОРТИРОВКА
         <select id="stashSort" aria-label="Сортировка склада">
           <option value="none">Без сортировки</option>
@@ -582,7 +609,7 @@ button,input,select,textarea{font-family:'Barlow','Roboto Condensed','Segoe UI',
   </form>
  </div>
 </div>
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" hidden></div><div id="cursorToast" class="cursor-toast" role="status" aria-live="polite" hidden></div>
 <button id="backToTop" class="back-to-top" type="button" aria-label="Вернуться в начало страницы" title="Наверх" hidden><span aria-hidden="true">↑</span> Наверх</button>
 <script>
 // Tell the visitor when the app module is blocked or a stale cached script fails.
@@ -594,5 +621,5 @@ setTimeout(() => {
  }
 },7000);
 </script>
-<script type="module" src="./app.js?v=8.0-check-progress-pdf"></script>
+<script type="module" src="./app.js?v=8.1-stash-progress-drag-share"></script>
 </body></html>
