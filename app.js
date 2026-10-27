@@ -240,7 +240,7 @@ const STASH_CATEGORIES=[
  ['augment','АУГМЕНТЫ','Icon_Augment.png','▣'],['key','КЛЮЧИ','Icon_Key.png','⚿'],
  ['mod','МОДИФИКАЦИИ','Icon_WeaponMod.png','⚙'],['research','ЧЕРТЕЖИ','Icon_Research.png','▤'],
  ['other','ПРОЧЕЕ','Icon_Misc.png','◌']];
-let stashFilter='all';
+let stashFilter='all',stashSort='type';
 function stashKind(item){
  const cat=String(item?.category||'').toLowerCase(),name=String(item?.name||'').toLowerCase();
  if(/shield|щит/.test(cat)||/^(light|medium|heavy) shield$/i.test(name))return 'shield';
@@ -254,6 +254,30 @@ function stashKind(item){
  if(/material|recyclable|nature|resource|crafting|trinket|материал|ресурс/.test(cat))return 'material';
  return 'other';
 }
+// Automatic STASH sorting affects only what is displayed, not Firestore or saved plans.
+const STASH_RARITY_ORDER={common:1,uncommon:2,rare:3,epic:4,legendary:5,amplified:6};
+function stashRarity(item){return STASH_RARITY_ORDER[String(item?.rarity||'').trim().toLowerCase()]||0}
+function stashValue(item){return (Number(item?.value)||0)*Math.max(1,Number(item?.qty)||1)}
+function stashTypeOrder(item){const n=STASH_CATEGORIES.findIndex(row=>row[0]===stashKind(item));return n<0?99:n}
+function stashViewEntries(){
+ const occupied=state.slots.map((item,index)=>({item,index})).filter(entry=>entry.item&&(stashFilter==='all'||stashKind(entry.item)===stashFilter));
+ occupied.sort((a,b)=>{
+  const aa=a.item,bb=b.item;
+  const byType=stashTypeOrder(aa)-stashTypeOrder(bb);
+  const byRarity=stashRarity(bb)-stashRarity(aa);
+  const byWorth=stashValue(bb)-stashValue(aa);
+  const byName=String(aa.nameRu||aa.name||'').localeCompare(String(bb.nameRu||bb.name||''),'ru',{sensitivity:'base'});
+  let difference=0;
+  if(stashSort==='rarity')difference=byRarity||byWorth||byType||byName;
+  else if(stashSort==='value')difference=byWorth||byRarity||byType||byName;
+  else if(stashSort==='name')difference=byName||byRarity||byWorth;
+  else difference=byType||byRarity||byWorth||byName;
+  return difference||a.index-b.index;
+ });
+ // An empty category shows EVERY available slot from the whole STASH.
+ const free=state.slots.flatMap((item,index)=>item?[]:[{item:null,index}]);
+ return occupied.concat(free);
+}
 function renderStashCategories(){
  $('stashCategoryBar').innerHTML=STASH_CATEGORIES.map(([id,label,icon,backup])=>{
   const count=state.slots.filter(x=>x&&(id==='all'||stashKind(x)===id)).length;
@@ -261,14 +285,20 @@ function renderStashCategories(){
   return `<button type="button" class="stash-category ${active?'active':''}" data-stash-category="${id}" aria-pressed="${active}" title="${label}"><span class="cat-icon"><img src="https://arcraiders.wiki/wiki/Special:Redirect/file/${icon}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="cat-fallback" hidden>${backup}</span></span><span class="cat-name">${label}</span><span class="cat-count">${count}</span></button>`;
  }).join('');
  const visible=state.slots.filter(x=>x&&(stashFilter==='all'||stashKind(x)===stashFilter)).length;
- $('stashFilterCaption').textContent=stashFilter==='all'?'ВСЕ ПРЕДМЕТЫ · '+visible:'ПОКАЗАНО '+visible+' · '+STASH_CATEGORIES.find(x=>x[0]===stashFilter)[1];
+ const free=state.slots.filter(x=>!x).length;
+ $('stashFilterCaption').textContent=(stashFilter==='all'?'ВСЕ ПРЕДМЕТЫ':STASH_CATEGORIES.find(x=>x[0]===stashFilter)[1])+' · ПРЕДМЕТОВ '+visible+' · СВОБОДНО '+free;
 }
 $('stashCategoryBar').addEventListener('click',e=>{
  const btn=e.target.closest('[data-stash-category]');if(!btn)return;
  stashFilter=btn.dataset.stashCategory;
  state.selectedSlot=null;renderGrid();
 });
-function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);grid.innerHTML=state.slots.map((s,i)=>`<button ${area==='stash'&&stashFilter!=='all'&&(!s||stashKind(s)!==stashFilter)?'hidden':''} class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(i+1))}"><span class="slotnum">${String(i+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
+$('stashSort').addEventListener('change',e=>{
+ if(!['type','rarity','value','name'].includes(e.target.value))return;
+ stashSort=e.target.value;
+ if(area==='stash')renderGrid();
+});
+function renderGrid(){const grid=$('inventory');grid.style.setProperty('--columns',state.columns);const shownSlots=area==='stash'?stashViewEntries():state.slots.map((item,index)=>({item,index}));grid.innerHTML=shownSlots.map(({item:s,index:i},v)=>`<button class="slot ${s?'filled':''} ${isBlueprint(s)?'is-blueprint':''} ${state.selectedSlot===i?'selected':''}" data-slot="${i}" data-rarity="${esc((s?.rarity||'').toLowerCase())}" title="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}" draggable="${s?'true':'false'}" aria-label="${esc(s?s.name+' ×'+s.qty:'Пустая ячейка '+(v+1))}"><span class="slotnum">${String(v+1).padStart(2,'0')}</span>${s?(isBlueprint(s)?blueprintArtwork(s):(s.image?`<img src="${esc(s.image)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><span class="empty-plus" style="display:none">▣</span>`:'<span class="empty-plus">▣</span>'))+`<span class="name">${esc(s.nameRu||s.name)}</span><span class="qty">${s.qty}</span><span class="rarity"></span>`:'<span class="empty-plus">+</span>'}</button>`).join('');
  const used=state.slots.filter(Boolean).length;$('usedCount').textContent=used;$('totalCount').textContent=state.capacity;$('freeCount').textContent=state.capacity-used;$('itemCount').textContent=state.slots.reduce((n,s)=>n+(s?.qty||0),0)+(area==='raid'?['quick','safe','augmented','weapons'].reduce((t,k)=>t+state.raidGear[k].reduce((n,s)=>n+(s?.qty||0),0),0)+(state.raidGear.shield?.qty||0):0);$('capacity').value=state.capacity;$('columns').value=state.columns;
  if(area==='stash')renderStashCategories();
 }
